@@ -63,43 +63,6 @@ object domain {
   given JsonDecoder[LocalDateTime]          = JsonDecoder[String].map(ldt => LocalDateTime.parse(ldt, format))
 }
 
-object jwt {
-
-  import config.*
-  import zio.*
-  import io.jsonwebtoken.{Claims, Jws, Jwts, JwtParser}
-  import java.nio.file.{Files, Paths}
-  import java.util.Base64
-  import javax.crypto.spec.SecretKeySpec
-
-  trait JWTService {
-    def decode(value: String): Task[Jws[Claims]]
-  }
-
-  object JWTService {
-    val layer = ZLayer.fromZIO {
-
-      def build(config: JwtConfig): Task[JwtParser] = {
-        ZIO.attemptBlockingIO {
-          val bytes   = Files.readAllBytes(Paths.get(config.key))
-          val decoded = Base64.getDecoder.decode(bytes)
-          val key     = new SecretKeySpec(decoded, 0, decoded.length, "HmacSHA512")
-          Jwts.parserBuilder().setSigningKey(key).build()
-        }
-      }
-
-      for {
-        config <- ZIO.service[GuaraConfig]
-        parser <- build(config.jwt)
-      } yield JWTServiceImpl(parser)
-    }
-  }
-
-  case class JWTServiceImpl(parser: JwtParser) extends JWTService {
-    override def decode(token: String) = ZIO.attempt(parser.parseClaimsJws(token))
-  }
-}
-
 object morbid {
 
   import config.*
@@ -365,10 +328,7 @@ object router {
   import domain.*
   import morbid.Morbid
 
-  import jwt.JWTService
-
   import better.files.*
-  import io.jsonwebtoken.*
   import zio.json.*
   import zio.http.*
   import zio.json.ast.*
