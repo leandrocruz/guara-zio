@@ -240,12 +240,14 @@ object id {
 }
 
 object utils {
-  import zio.http.*
 
-  import zio.json.*
   import errors.*
+  import zio.http.*
+  import zio.json.*
+  import scala.util.matching.Regex
 
   extension (body: zio.http.Body) {
+
     def parse[T](using jsonDecoder: JsonDecoder[T]): Task[T] = {
       for {
         str <- body.asString
@@ -253,6 +255,24 @@ object utils {
       } yield value
     }
   }
+
+  // w = [a-zA-Z_0-9]
+
+  val code = "[a-z0-9_]+".r
+  val name = "[\\w\\.\\- ]+".r
+
+  def safeDecode(regex: Regex, maxLength: Int) = {
+    JsonDecoder.string.mapOrFail { str =>
+      (str.length > maxLength, regex.matches(str)) match
+        case (true, _)  => Left(s"'$str' must have at most $maxLength chars")
+        case (_, false) => Left(s"'$str' has invalid chars")
+        case (_, true)  => Right(str.trim.replaceAll(" +", " "))
+    }
+  }
+
+  def safeName = safeDecode(name, _)
+  def safeCode = safeDecode(code, _)
+
 
   def call(z: ZIO[Client & Scope, Throwable, Response])(using client: Client, scope: Scope): Task[Response] = {
     z.provide(ZLayer.succeed(client), ZLayer.succeed(scope))
