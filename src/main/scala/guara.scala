@@ -79,20 +79,6 @@ object errors {
       }
     }
   }
-
-  def trap(task: ZIO[Any, Throwable, Response]): Task[Response] = {
-
-    task.catchAllCause {
-      case it @ Cause.Empty                        => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-      case it @ Cause.Die(throwable, trace)        => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-      case it @ Cause.Interrupt(fiberId, trace)    => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-      case it @ Cause.Stackless(cause, stackless)  => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-      case it @ Cause.Then(left, right)            => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-      case it @ Cause.Both(left, right)            => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-      case it @ Cause.Fail(pe: GuaraError, trace) => ZIO.logErrorCause(pe.asErrorMessage, it) *> pe.asResponse
-      case it @ Cause.Fail(ex, trace)              => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-    }
-  }
 }
 
 object domain {
@@ -273,9 +259,27 @@ object utils {
   def safeName = safeDecode(name, _)
   def safeCode = safeDecode(code, _)
 
+  extension (string: String)
+    def as[T]: T = string.asInstanceOf[T]
+
+  extension (long: Long)
+    def as[T]: T = long.asInstanceOf[T]
 
   def call(z: ZIO[Client & Scope, Throwable, Response])(using client: Client, scope: Scope): Task[Response] = {
     z.provide(ZLayer.succeed(client), ZLayer.succeed(scope))
+  }
+
+  def trap(task: ZIO[Any, Throwable, Response]): Task[Response] = {
+    task.catchAllCause {
+      case it @ Cause.Empty                       => ZIO.logErrorCause("", it)      *> ZIO.succeed(Response.internalServerError("TODO"))
+      case it @ Cause.Die(throwable, trace)       => ZIO.logErrorCause("", it)      *> ZIO.succeed(Response.internalServerError("TODO"))
+      case it @ Cause.Interrupt(fiberId, trace)   => ZIO.logErrorCause("", it)      *> ZIO.succeed(Response.internalServerError("TODO"))
+      case it @ Cause.Stackless(cause, stackless) => ZIO.logErrorCause("", it)      *> ZIO.succeed(Response.internalServerError("TODO"))
+      case it @ Cause.Then(left, right)           => ZIO.logErrorCause("", it)      *> ZIO.succeed(Response.internalServerError("TODO"))
+      case it @ Cause.Both(left, right)           => ZIO.logErrorCause("", it)      *> ZIO.succeed(Response.internalServerError("TODO"))
+      case it @ Cause.Fail(pe: GuaraError, trace) => ZIO.logErrorCause(pe.asErrorMessage, it) *> pe.asResponse
+      case it @ Cause.Fail(ex, trace)             => ZIO.logErrorCause("", it)      *> ZIO.succeed(Response.internalServerError("TODO"))
+    }
   }
 }
 
