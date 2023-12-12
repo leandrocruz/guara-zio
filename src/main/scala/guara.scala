@@ -244,7 +244,7 @@ object utils {
 
   // w = [a-zA-Z_0-9]
 
-  val code = "[a-z0-9_]+".r
+  val code = "[a-zA-Z0-9_]+".r
   val name = "[\\w\\.\\- ]+".r
 
   def safeDecode(regex: Regex, maxLength: Int) = {
