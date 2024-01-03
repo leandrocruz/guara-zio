@@ -61,12 +61,12 @@ object errors {
 
     def trap(gio: GIO[Response]): Task[Response] = {
       gio.catchAllTrace {
-        case (cause: Throwable, trace: StackTrace) => ZIO.logCause(Cause.fail(cause)) *> ZIO.succeed(Response.internalServerError)
+        case (cause: Throwable, trace: StackTrace) => ZIO.logCause(Cause.fail(cause, trace)) *> ZIO.succeed(Response.internalServerError)
         case (err: GuaraError, trace: StackTrace)  =>
           err match
             case ResponseError(response)                     => ZIO.succeed(response)
-            case ExceptionError(cause)                       => ZIO.logCause(Cause.fail(cause)) *> ZIO.succeed(Response.internalServerError)
-            case ExceptionWithResponseError(cause, response) => ZIO.logCause(Cause.fail(cause)) *> ZIO.succeed(response)
+            case ExceptionError(cause)                       => ZIO.logCause(Cause.fail(cause, trace)) *> ZIO.succeed(Response.internalServerError)
+            case ExceptionWithResponseError(cause, response) => ZIO.logCause(Cause.fail(cause, trace)) *> ZIO.succeed(response)
       }
     }
 
