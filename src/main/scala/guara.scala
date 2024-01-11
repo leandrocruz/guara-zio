@@ -42,47 +42,16 @@ object errors {
   import zio.http.Response
   import zio.http.Status
 
-  type GIO[+A] = ZIO[Any, Throwable | GuaraError, A]
-
-  sealed trait GuaraError
-  case class ExceptionError             (cause: Throwable)                     extends GuaraError
-  case class ResponseError              (response: Response)                   extends GuaraError
-  case class ExceptionWithResponseError (cause: Throwable, response: Response) extends GuaraError
+  case class ReturnResponseError              (response: Response)                   extends Exception
+  case class ReturnResponseWithExceptionError (cause: Throwable, response: Response) extends Exception
 
   object GuaraError {
 
-    def of(cause: Throwable)                    : GuaraError = ExceptionError(cause)
-    def of(response: Response)                  : GuaraError = ResponseError(response)
-    def of(response: Response)(cause: Throwable): GuaraError = ExceptionWithResponseError(cause, response)
+    def of(response: Response)                   = ReturnResponseError(response)
+    def of(response: Response)(cause: Throwable) = ReturnResponseWithExceptionError(cause, response)
 
-    def fail[A](cause: Throwable)                     : GIO[A] = ZIO.fail(ExceptionError(cause))
-    def fail[A](                  response: Response) : GIO[A] = ZIO.fail(ResponseError(response))
-    def fail[A](cause: Throwable, response: Response) : GIO[A] = ZIO.fail(ExceptionWithResponseError(cause, response))
-
-    def trap(gio: GIO[Response]): Task[Response] = {
-      gio.catchAllTrace {
-        case (cause: Throwable, trace: StackTrace) => ZIO.logCause(Cause.fail(cause, trace)) *> ZIO.succeed(Response.internalServerError)
-        case (err: GuaraError, trace: StackTrace)  =>
-          err match
-            case ResponseError(response)                     => ZIO.succeed(response)
-            case ExceptionError(cause)                       => ZIO.logCause(Cause.fail(cause, trace)) *> ZIO.succeed(Response.internalServerError)
-            case ExceptionWithResponseError(cause, response) => ZIO.logCause(Cause.fail(cause, trace)) *> ZIO.succeed(response)
-      }
-    }
-
-//    def trap(task: ZIO[Any, Throwable, Response]): Task[Response] = {
-//      task.catchAllCause {
-//        case it@Cause.Empty => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-//        case it@Cause.Die(throwable, trace) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-//        case it@Cause.Interrupt(fiberId, trace) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-//        case it@Cause.Stackless(cause, stackless) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-//        case it@Cause.Then(left, right) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-//        case it@Cause.Both(left, right) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-//        case it@Cause.Fail(pe: GuaraError, trace) => ZIO.logErrorCause(pe.asErrorMessage, it) *> pe.asResponse
-//        case it@Cause.Fail(ex, trace) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-//      }
-//    }
-
+    def fail[A](                  response: Response) : Task[A] = ZIO.fail(of(response))
+    def fail[A](cause: Throwable, response: Response) : Task[A] = ZIO.fail(of(response)(cause))
   }
 }
 
@@ -236,13 +205,19 @@ object utils {
   import zio.http.*
   import zio.json.*
   import scala.util.matching.Regex
+  import java.nio.charset.Charset
+
+  val utf8 = Charset.forName("utf8")
 
   extension (body: zio.http.Body) {
 
-    def parse[T](using jsonDecoder: JsonDecoder[T]): Task[T] = {
+    def parse[T](using jsonDecoder: JsonDecoder[T], charset: Charset = utf8): Task[T] = {
       for {
-        str   <- body.asString                                              //.mapError(GuaraError.of(Response.badRequest("Body is not a string")))
-        value <- ZIO.fromEither(str.fromJson[T]).mapError(new Exception(_)) //.mapError(msg => GuaraError.of(Response.badRequest(msg)))
+        str   <- body.asString(charset)
+        value <- str.fromJson[T] match {
+                   case Right(value) => ZIO.succeed(value)
+                   case Left(err)    => ZIO.fail(new Exception(s"Failure parsing json body: $err"))
+                 }
       } yield value
     }
   }
@@ -273,6 +248,29 @@ object utils {
   def call(z: ZIO[Client & Scope, Throwable, Response])(using client: Client, scope: Scope): Task[Response] = {
     z.provide(ZLayer.succeed(client), ZLayer.succeed(scope))
   }
+
+  def ensureResponse(task: Task[Response]): Task[Response] = {
+    task.catchAllTrace {
+      case (ReturnResponseError(response)                  , _    ) => ZIO.succeed(response)
+      case (ReturnResponseWithExceptionError(err, response), trace) => ZIO.logErrorCause("Failure", Cause.fail(err, trace)) *> ZIO.succeed(response)
+      case (err                                            , trace) => ZIO.logErrorCause("Failure", Cause.fail(err, trace)) *> ZIO.succeed(Response.internalServerError)
+    }.catchAllDefect {
+      case err                                                      => ZIO.logErrorCause("Defect", Cause.fail(err)) *> ZIO.succeed(Response.internalServerError)
+    } //.catchNonFatalOrDie
+  }
+
+  //    def trap(task: ZIO[Any, Throwable, Response]): Task[Response] = {
+  //      task.catchAllCause {
+  //        case it@Cause.Empty => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
+  //        case it@Cause.Die(throwable, trace) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
+  //        case it@Cause.Interrupt(fiberId, trace) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
+  //        case it@Cause.Stackless(cause, stackless) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
+  //        case it@Cause.Then(left, right) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
+  //        case it@Cause.Both(left, right) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
+  //        case it@Cause.Fail(pe: GuaraError, trace) => ZIO.logErrorCause(pe.asErrorMessage, it) *> pe.asResponse
+  //        case it@Cause.Fail(ex, trace) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
+  //      }
+  //    }
 }
 
 object http {
