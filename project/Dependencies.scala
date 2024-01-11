@@ -1,11 +1,11 @@
 import sbt._
 
 object Dependencies {
-  val ZioVersion        = "2.0.19"
-  val ZioConfigVersion  = "4.0.0-RC16"
-  val ZHTTPVersion      = "3.0.0-RC4" //3.0.0-RC2+118-32a59d9c-SNAPSHOT //0.0.0+1435-c6c11f9f-SNAPSHOT" //3.0.0-RC2+78-8780eb95+20230919-1705-SNAPSHOT" //"3.0.0-RC2+78-8780eb95-SNAPSHOT"
+  val ZioVersion        = "2.1-RC1"
+  val ZioConfigVersion  = "4.0.0"
+  val ZHTTPVersion      = "3.0.0-RC4"
   val ZioJsonVersion    = "0.6.2"
-  val ZioLoggingVersion = "2.1.14"
+  val ZioLoggingVersion = "2.1.16"
   val QuillVersion      = "4.6.0"
   val Logback2Version   = "1.4.11"
   val Slf4j2Version     = "2.0.9"
