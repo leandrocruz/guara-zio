@@ -5,7 +5,7 @@ object Dependencies {
   val ZioConfigVersion  = "4.0.0"
   val ZHTTPVersion      = "3.0.0-RC4"
   val ZioJsonVersion    = "0.6.2"
-  val ZioLoggingVersion = "2.1.16"
+  val ZioLoggingVersion = "2.2.4"
   val QuillVersion      = "4.6.0"
   val Logback2Version   = "1.4.11"
   val Slf4j2Version     = "2.0.9"
