@@ -1,6 +1,7 @@
 package guara
 
 import zio.*
+import zio.http.Server.RequestStreaming
 
 object config {
 
@@ -15,7 +16,7 @@ object config {
 
   case class KafkaConsumerConfig(enabled: Boolean, group: String, topic: String)
   case class KafkaConfig(key: String, secret: String, servers: Seq[String], consumer: KafkaConsumerConfig)
-  case class HttpConfig(port: Int)
+  case class HttpConfig(port: Int, maxRequestSize: Int)
   case class MorbidConfig(url: String, magic: String, updateEvery: Duration)
   case class JwtConfig(key: String)
   case class GuaraConfig(name: String, jwt: JwtConfig, morbid: MorbidConfig, http: HttpConfig, kafka: KafkaConfig)
@@ -282,7 +283,7 @@ object http {
     val layer = ZLayer.fromZIO {
       for {
         cfg <- ZIO.service[GuaraConfig]
-      } yield Server.defaultWithPort(cfg.http.port)
+      } yield Server.defaultWith(_.port(cfg.http.port).requestStreaming(RequestStreaming.Disabled(cfg.http.maxRequestSize)))
     }.flatten
   }
 }
@@ -485,7 +486,7 @@ trait GuaraApp extends ZIOAppDefault {
     morbid <- ZIO.service[Morbid]
     _      <- ZIO.logInfo(s"Starting ${config.name} at '${config.http.port}'")
     _      <- kafka.start.forkDaemon
-    _      <- morbid.start.forkDaemon
+    //_      <- morbid.start.forkDaemon
     _      <- Server.serve(router.routes)
   } yield ()
 
