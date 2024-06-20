@@ -225,8 +225,9 @@ object utils {
 
   // w = [a-zA-Z_0-9]
 
-  val code = "[a-zA-Z0-9_]+".r
-  val name = "[\\w\\.\\- ]+".r
+  val code      = "[a-zA-Z0-9_]+".r
+  val name      = "[\\w\\.\\- ]+".r
+  val latinName = "[\u00C0-\u017F\\w\\.\\- ]+".r
 
   def safeDecode(regex: Regex, maxLength: Int) = {
     JsonDecoder.string.mapOrFail { str =>
@@ -237,8 +238,9 @@ object utils {
     }
   }
 
-  def safeName = safeDecode(name, _)
-  def safeCode = safeDecode(code, _)
+  def safeCode      = safeDecode(code     , _)
+  def safeName      = safeDecode(name     , _)
+  def safeLatinName = safeDecode(latinName, _)
 
   extension (string: String)
     def as[T]: T = string.asInstanceOf[T]
