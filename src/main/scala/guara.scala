@@ -273,6 +273,12 @@ object utils {
   //        case it@Cause.Fail(ex, trace) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
   //      }
   //    }
+
+  extension (params: QueryParams)
+    def get(name: String): Option[String] = params.getAll(name).headOption
+
+  extension (url: URL)
+    def queryParams(params: QueryParams): URL = url.updateQueryParams(_ => params)
 }
 
 object http {
