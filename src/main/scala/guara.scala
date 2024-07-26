@@ -1,7 +1,6 @@
 package guara
 
 import zio.*
-import zio.http.Server.RequestStreaming
 
 object config {
 
@@ -280,6 +279,7 @@ object http {
 
   import config.GuaraConfig
   import zio.http.Server
+  import zio.http.Server.RequestStreaming
 
   object HttpServer {
     val layer = ZLayer.fromZIO {
@@ -431,7 +431,7 @@ object router {
   import scala.util.Try
 
   trait Router {
-    def routes: HttpApp[Any]
+    def routes: Routes[Any, Nothing]
   }
 
   object Echo {
