@@ -436,7 +436,7 @@ object router {
 
   object Echo {
 
-    def routes: HttpApp[Any] = {
+    def routes = {
 
       def echo(path: Path, req: Request): Task[Response] = {
 
@@ -457,7 +457,7 @@ object router {
 
       Routes(
         Method.ANY / "i" / "echo"/ trailing -> Handler.fromFunctionZIO[(Path, Request)](echo)
-      ).sandbox.toHttpApp
+      ).sandbox
     }
   }
 }

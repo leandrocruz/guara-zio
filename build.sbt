@@ -2,7 +2,7 @@ import Dependencies._
 
 organization                 := "guara"
 name                         := "guara-framework"
-version                      := "v0.0.4-SNAPSHOT"
+version                      := "v0.0.5-SNAPSHOT"
 doc / sources                := Seq.empty
 packageDoc / publishArtifact := false
 testFrameworks               += new TestFramework("zio.test.sbt.ZTestFramework")
