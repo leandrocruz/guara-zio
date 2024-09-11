@@ -1,9 +1,10 @@
 import sbt._
 import sbt.Keys._
 
-
 object BuildHelper {
-  val ScalaVersion = "3.3.0"
+  val Scala3   = "3.3.3"
+  val Scala212 = "2.12.19"
+  val Scala213 = "2.13.14"
 
   def commonSettings(scalaVersion: String) = CrossVersion.partialVersion(scalaVersion) match {
     case Some((3, _))                  => Seq.empty
@@ -11,8 +12,9 @@ object BuildHelper {
     case _                             => Seq.empty
   }
   def stdSettings = Seq(
-    ThisBuild / fork          := true,
-    ThisBuild / scalaVersion  := ScalaVersion,
-    ThisBuild / scalacOptions := commonSettings(scalaVersion.value),
+    ThisBuild / fork               := true,
+    //ThisBuild / crossScalaVersions := List(Scala212, Scala213, Scala3),
+    ThisBuild / scalaVersion       := Scala3,
+    ThisBuild / scalacOptions      := commonSettings(scalaVersion.value),
   )
 }
