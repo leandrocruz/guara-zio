@@ -1,6 +1,1 @@
-# Guara 
-
- - Updating
-   * scala
-   * sbt
-   * dependencies
+# Guara
