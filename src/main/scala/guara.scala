@@ -15,7 +15,8 @@ object config {
 
   case class KafkaConsumerConfig(enabled: Boolean, group: String, topic: String)
   case class KafkaConfig(key: String, secret: String, servers: Seq[String], consumer: KafkaConsumerConfig)
-  case class HttpConfig(port: Int, maxRequestSize: Int)
+  case class HttpSSLConfig(certificate: String, key: String)
+  case class HttpConfig(port: Int, maxRequestSize: Int, ssl: Option[HttpSSLConfig])
   case class MorbidConfig(url: String, magic: String, updateEvery: Duration)
   case class JwtConfig(key: String)
   case class GuaraConfig(name: String, jwt: JwtConfig, morbid: MorbidConfig, http: HttpConfig, kafka: KafkaConfig)
@@ -252,12 +253,21 @@ object utils {
   }
 
   def ensureResponse(task: Task[Response]): Task[Response] = {
+
+    def ise(cause: Throwable) = ZIO.succeed {
+      //Response.internalServerError
+      Response(
+        status  = Status.InternalServerError,
+        headers = Headers(Header.Custom("Error", cause.getMessage))
+      )
+    }
+
     task.catchAllTrace {
       case (ReturnResponseError(response)                  , _    ) => ZIO.succeed(response)
       case (ReturnResponseWithExceptionError(err, response), trace) => ZIO.logErrorCause("Failure", Cause.fail(err, trace)) *> ZIO.succeed(response)
-      case (err                                            , trace) => ZIO.logErrorCause("Failure", Cause.fail(err, trace)) *> ZIO.succeed(Response.internalServerError)
+      case (err                                            , trace) => ZIO.logErrorCause("Failure", Cause.fail(err, trace)) *> ise(err)
     }.catchAllDefect {
-      case err                                                      => ZIO.logErrorCause("Defect", Cause.fail(err)) *> ZIO.succeed(Response.internalServerError)
+      case err                                                      => ZIO.logErrorCause("Defect", Cause.fail(err)) *> ise(err)
     } //.catchNonFatalOrDie
   }
 
@@ -286,12 +296,35 @@ object http {
   import config.GuaraConfig
   import zio.http.Server
   import zio.http.Server.RequestStreaming
+  import guara.config.HttpSSLConfig
+  import zio.http.SSLConfig
+  import zio.http.SSLConfig.HttpBehaviour
+
 
   object HttpServer {
     val layer = ZLayer.fromZIO {
+
+      def toSSLConfig(ssl: HttpSSLConfig) = {
+        SSLConfig.fromResource(
+          behaviour               = HttpBehaviour.Redirect,
+          certPath                = ssl.certificate,
+          keyPath                 = ssl.key,
+          clientAuth              = None,
+          trustCertCollectionPath = None,
+          includeClientCert       = false,
+        )
+      }
+
       for {
         cfg <- ZIO.service[GuaraConfig]
-      } yield Server.defaultWith(_.port(cfg.http.port).requestStreaming(RequestStreaming.Disabled(cfg.http.maxRequestSize)))
+      } yield Server
+        .defaultWith(
+          _ .port(cfg.http.port)
+            .requestStreaming(RequestStreaming.Disabled(cfg.http.maxRequestSize))
+            .copy(
+              sslConfig = cfg.http.ssl.map(toSSLConfig)
+            )
+        )
     }.flatten
   }
 }
