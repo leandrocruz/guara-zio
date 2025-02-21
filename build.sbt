@@ -1,6 +1,6 @@
 lazy val ZioVersion        = "2.1.6"
 lazy val ZioConfigVersion  = "4.0.2"
-lazy val ZHTTPVersion      = "3.0.0-RC9"
+lazy val ZHTTPVersion      = "3.0.1"
 lazy val ZioJsonVersion    = "0.6.2"
 lazy val ZioLoggingVersion = "2.3.0"
 lazy val QuillVersion      = "4.8.5"
@@ -9,7 +9,7 @@ lazy val Slf4j2Version     = "2.0.12"
 
 organization                 := "guara"
 name                         := "guara-framework"
-version                      := "v0.1.0-SNAPSHOT"
+version                      := "v0.1.1-SNAPSHOT"
 doc / sources                := Seq.empty
 packageDoc / publishArtifact := false
 testFrameworks               += new TestFramework("zio.test.sbt.ZTestFramework")
@@ -26,9 +26,9 @@ libraryDependencies          ++= Seq(
   "dev.zio"              %% "zio-logging-slf4j2"         % ZioLoggingVersion       ,
   //"org.slf4j"            %  "slf4j-api"                  % Slf4j2Version           ,
   "ch.qos.logback"       %  "logback-classic"            % Logback2Version         ,
-  "io.getquill"          %% "quill-zio"                  % QuillVersion            ,
-  "io.getquill"          %% "quill-jdbc-zio"             % QuillVersion            ,
-  "org.postgresql"       %  "postgresql"                 % "42.7.3"                ,
+//  "io.getquill"          %% "quill-zio"                  % QuillVersion            ,
+//  "io.getquill"          %% "quill-jdbc-zio"             % QuillVersion            ,
+//  "org.postgresql"       %  "postgresql"                 % "42.7.3"                ,
   "dev.zio"              %% "zio-test-sbt"               % ZioVersion   % Test     ,
 )
 
