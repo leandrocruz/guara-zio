@@ -297,9 +297,11 @@ object http {
   import zio.http.Server
   import zio.http.Server.RequestStreaming
   import guara.config.HttpSSLConfig
-  import zio.http.SSLConfig
+  import zio.http.*
   import zio.http.SSLConfig.HttpBehaviour
+  import zio.json.*
 
+  def urlFrom(raw: String) = ZIO.fromEither(URL.decode(raw)).mapError(err => Exception(s"Error parsing '$raw'"))
 
   object HttpServer {
     val layer = ZLayer.fromZIO {
@@ -326,6 +328,69 @@ object http {
             )
         )
     }.flatten
+  }
+
+  object client {
+
+    object headers {
+      val applicationJson = Header.ContentType(MediaType.application.json)
+    }
+
+    trait ResponseHandler[T] {
+      def handle(response: Response): Task[T]
+    }
+
+//    trait BodyBuilder[T] {
+//      def build(t: T): Task[Body]
+//    }
+
+    object handlers {
+
+      val asText: ResponseHandler[String] = (res: Response) => res.body.asString
+
+      def asTextIf(expected: Int): ResponseHandler[String] = (res: Response) => {
+        for
+          _    <- ZIO.when(res.status.code != expected) { ZIO.fail(Exception(s"Status code is ${res.status.code}. Expected $expected")) }
+          text <- asText.handle(res)
+        yield text
+      }
+
+      def asJson[T](using JsonDecoder[T]): ResponseHandler[T] = (res: Response) => {
+        for
+          text  <- res.body.asString
+          value <- ZIO.fromEither(text.fromJson[T]).mapError(msg => Exception(s"Error decoding json: '$msg'"))
+        yield value
+      }
+
+      def asJsonIf[T](expected: Int)(using JsonDecoder[T]): ResponseHandler[T] = (res: Response) => {
+        for
+          _    <- ZIO.when(res.status.code != expected) { ZIO.fail(Exception(s"Status code is ${res.status.code}. Expected $expected")) }
+          value <- asJson.handle(res)
+        yield value
+      }
+    }
+
+    case class PinnedHttpClient(base: URL, fixed: Headers) {
+
+      def execute[T](request: Request)(using handler: ResponseHandler[T]): ZIO[Client, Throwable, T] = {
+        for
+          res    <- Client.batched(request)//.provideLayer(ZLayer.succeed(client))
+          result <- handler.handle(res)
+        yield result
+      }
+
+      def get[T](url: URL, extra: Headers = Headers.empty)(using ResponseHandler[T]) = execute {
+        Request.get(base ++ url).addHeaders(fixed.addHeaders(extra))
+      }
+
+      def post[T](url: URL, extra: Headers = Headers.empty)(body: Body)(using ResponseHandler[T]) = execute {
+        Request.post(base ++ url, body).addHeaders(fixed.addHeaders(extra))
+      }
+
+      def postJson[T, B](url: URL, extra: Headers = Headers.empty)(body: B)(using ResponseHandler[T], JsonEncoder[B]) = execute {
+        Request.post(base ++ url, Body.fromString(body.toJson)).addHeaders(fixed.addHeaders(extra).addHeader(headers.applicationJson))
+      }
+    }
   }
 }
 

@@ -9,7 +9,7 @@ lazy val Slf4j2Version     = "2.0.12"
 
 organization                 := "guara"
 name                         := "guara-framework"
-version                      := "v1.0.0"
+version                      := "v1.0.1"
 doc / sources                := Seq.empty
 packageDoc / publishArtifact := false
 testFrameworks               += new TestFramework("zio.test.sbt.ZTestFramework")
