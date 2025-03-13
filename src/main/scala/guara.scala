@@ -493,6 +493,32 @@ object kafka {
   }
 }
 
+object background {
+
+  import kafka.KafkaConsumer
+
+  trait BackgroundServices {
+    def start: UIO[Unit]
+  }
+
+  case class NoBackgroundServices() extends BackgroundServices {
+    override def start = ZIO.unit
+  }
+
+  case class KafkaClient(kafka: KafkaConsumer) extends BackgroundServices {
+    override def start =
+      for
+        _  <- ZIO.logInfo(s"Starting Kafka Consumer")
+        _  <- kafka.start.forkDaemon
+      yield ()
+  }
+
+  object BackgroundServices {
+    val none  = ZLayer.succeed(NoBackgroundServices())
+    val kafka = ZLayer.succeed(NoBackgroundServices())
+  }
+}
+
 object processor {
 
   import domain.*
@@ -568,33 +594,25 @@ object router {
 
 trait GuaraApp extends ZIOAppDefault {
 
-  import processor.Processor
-  import zio.http.Client
-  import zio.kafka.consumer.Consumer
-  import morbid.UserCache
   import config.GuaraConfig
   import http.HttpServer
-  import kafka.KafkaConsumer
   import router.Router
-  import morbid.Morbid
+  import background.BackgroundServices
   import zio.http.Server
 
-  private val cch   : ZLayer[Any                            , Throwable, Ref[UserCache]]                                = ZLayer(Ref.make(UserCache(Seq.empty)))
-  private val srv   : ZLayer[GuaraConfig                    , Throwable, Server]                                        = HttpServer.layer
-  private val mor   : ZLayer[Scope & GuaraConfig            , Throwable, Morbid]                                        = (cch ++ Client.default) >>> Morbid.layer
-  private val kaf   : ZLayer[Scope & GuaraConfig & Processor, Throwable, KafkaConsumer]                                 = KafkaConsumer.consumer >>> KafkaConsumer.layer
-  private val basic : ZLayer[Processor                      , Throwable, GuaraConfig & Morbid & Server & KafkaConsumer] = (GuaraConfig.layer ++ Scope.default) >>> (mor ++ srv ++ kaf ++ GuaraConfig.layer)
+  private val srv   : ZLayer[GuaraConfig, Throwable, Server]               = HttpServer.layer
+  private val basic : ZLayer[Any        , Throwable, GuaraConfig & Server] = GuaraConfig.layer >>> (srv ++ GuaraConfig.layer)
 
-  private def services: ZIO[Router & Server & Morbid & KafkaConsumer & GuaraConfig, Throwable, Unit] = for {
-    config <- ZIO.service[GuaraConfig]
-    kafka  <- ZIO.service[KafkaConsumer]
-    router <- ZIO.service[Router]
-    morbid <- ZIO.service[Morbid]
-    _      <- ZIO.logInfo(s"Starting ${config.name} at '${config.http.port}'")
-    _      <- kafka.start.forkDaemon
-    //_      <- morbid.start.forkDaemon
-    _      <- Server.serve(router.routes)
-  } yield ()
+  private def services: ZIO[BackgroundServices & Router & Server & GuaraConfig, Throwable, Unit] =
+    for
+      config <- ZIO.service[GuaraConfig]
+      router <- ZIO.service[Router]
+      bg     <- ZIO.service[BackgroundServices]
+      _      <- ZIO.logInfo(s"Starting Background Services")
+      _      <- bg.start.forkDaemon
+      _      <- ZIO.logInfo(s"Starting HTTP Server (${config.name} at ${config.http.port})")
+      _      <- Server.serve(router.routes)
+    yield ()
 
-  def startGuara: ZIO[Processor & Router, Throwable, Unit] = services.provideSomeLayer(basic)
+  def startGuara: ZIO[BackgroundServices & Router, Throwable, Unit] = services.provideSomeLayer(basic)
 }
