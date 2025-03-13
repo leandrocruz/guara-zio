@@ -1,5 +1,8 @@
 # Guara
 
+## Release v1.1.0
+on: 13/Mar/2025
+
  - Reworking how background services start
 
 ## Release v1.0.1
