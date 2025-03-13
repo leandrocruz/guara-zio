@@ -1,5 +1,10 @@
 # Guara
 
+## Release v1.1.1
+on: 13/Mar/2025
+
+ - Updating dependencies
+
 ## Release v1.1.0
 on: 13/Mar/2025
 
