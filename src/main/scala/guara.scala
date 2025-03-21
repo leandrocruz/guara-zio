@@ -212,12 +212,12 @@ object utils {
 
   extension (body: zio.http.Body) {
 
-    def parse[T](using jsonDecoder: JsonDecoder[T], charset: Charset = utf8): Task[T] = {
+    def parse[T](using jsonDecoder: JsonDecoder[T], charset: Charset = utf8, logBody: Boolean = false): Task[T] = {
       for {
         str   <- body.asString(charset)
         value <- str.fromJson[T] match {
                    case Right(value) => ZIO.succeed(value)
-                   case Left(err)    => ZIO.fail(new Exception(s"Failure parsing json body: $err"))
+                   case Left(err)    => ZIO.fail(new Exception(s"Failure parsing json body: '$err' ${if(logBody) s" (BODY/$charset: $str)" else "" }"))
                  }
       } yield value
     }

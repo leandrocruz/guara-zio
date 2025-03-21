@@ -1,5 +1,10 @@
 # Guara
 
+## Release v1.1.2
+on: 21/Mar/2025
+
+ - Added option to log the body when `parse` fails
+
 ## Release v1.1.1
 on: 13/Mar/2025
 
