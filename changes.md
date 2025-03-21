@@ -1,5 +1,10 @@
 # Guara
 
+## Release v1.1.3
+on: 21/Mar/2025
+
+ - Fixed previous release
+
 ## Release v1.1.2
 on: 21/Mar/2025
 

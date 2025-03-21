@@ -212,7 +212,7 @@ object utils {
 
   extension (body: zio.http.Body) {
 
-    def parse[T](using jsonDecoder: JsonDecoder[T], charset: Charset = utf8, logBody: Boolean = false): Task[T] = {
+    def parse[T](logBody: Boolean = false)(using jsonDecoder: JsonDecoder[T], charset: Charset = utf8): Task[T] = {
       for {
         str   <- body.asString(charset)
         value <- str.fromJson[T] match {
