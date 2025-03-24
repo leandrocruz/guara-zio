@@ -1,5 +1,8 @@
 # Guara
 
+ - Sandboxing erros at `ensureResponse`
+ - Returning structure error information as json
+
 ## Release v1.1.3
 on: 21/Mar/2025
 
