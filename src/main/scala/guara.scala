@@ -44,7 +44,7 @@ object errors {
   import zio.http.Status
 
   case class ReturnResponseError              (response: Response)                   extends Exception
-  case class ReturnResponseWithExceptionError (cause: Throwable, response: Response) extends Exception
+  case class ReturnResponseWithExceptionError (cause: Throwable, response: Response) extends Exception(cause)
 
   object GuaraError {
 
@@ -274,7 +274,7 @@ object utils {
 
     task.sandbox.catchAllTrace {
       case (     Cause.Fail(ReturnResponseError(response)                  , _), _)     => ZIO.succeed(response)
-      case (it @ Cause.Fail(ReturnResponseWithExceptionError(err, response), _), _)     => ZIO.logErrorCause("RRWE"   , it)  *> ZIO.succeed(response)
+      case (it @ Cause.Fail(ReturnResponseWithExceptionError(err, response), _), _)     => ZIO.logErrorCause("RRWEE"  , it)  *> ZIO.succeed(response)
       case (err                                                                , trace) => ZIO.logErrorCause("Failure", err) *> ise(err.squash, Some(trace))
     }.catchAllDefect(
       err                                                                               => ZIO.logErrorCause("Defect", Cause.die(err)) *> ise(err)
