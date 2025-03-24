@@ -207,6 +207,13 @@ object utils {
   import zio.json.*
   import scala.util.matching.Regex
   import java.nio.charset.Charset
+  import org.apache.commons.lang3.exception.ExceptionUtils
+
+  opaque type Origin = String
+
+  object Origin {
+    def of(origin: String): Origin = origin
+  }
 
   val utf8 = Charset.forName("utf8")
 
@@ -252,23 +259,26 @@ object utils {
     z.provide(ZLayer.succeed(client), ZLayer.succeed(scope))
   }
 
-  def ensureResponse(task: Task[Response]): Task[Response] = {
+  def ensureResponse(task: Task[Response])(using origin: Origin): Task[Response] = {
 
-    def ise(cause: Throwable) = ZIO.succeed {
-      //Response.internalServerError
-      Response(
-        status  = Status.InternalServerError,
-        headers = Headers(Header.Custom("Error", cause.getMessage))
-      )
+    def ise(cause: Throwable, trace: Option[StackTrace] = None) = ZIO.succeed {
+
+      val stack = trace match
+        case Some(value) if !value.isEmpty => value.prettyPrint
+        case None                          => ExceptionUtils.getStackTrace(cause)
+        case Some(value)                   => ExceptionUtils.getStackTrace(cause)
+
+      val response = Response.json(s"""{ "origin":"$origin", "message":"${cause.getMessage}", "trace":${stack.replaceAll("\n", "||")}  }""")
+      response.copy(status = Status.InternalServerError, headers = response.headers ++ Headers(Header.Custom("Error", cause.getMessage)))
     }
 
-    task.catchAllTrace {
-      case (ReturnResponseError(response)                  , _    ) => ZIO.succeed(response)
-      case (ReturnResponseWithExceptionError(err, response), trace) => ZIO.logErrorCause("Failure", Cause.fail(err, trace)) *> ZIO.succeed(response)
-      case (err                                            , trace) => ZIO.logErrorCause("Failure", Cause.fail(err, trace)) *> ise(err)
-    }.catchAllDefect {
-      case err                                                      => ZIO.logErrorCause("Defect", Cause.fail(err)) *> ise(err)
-    } //.catchNonFatalOrDie
+    task.sandbox.catchAllTrace {
+      case (     Cause.Fail(ReturnResponseError(response)                  , _), _)     => ZIO.succeed(response)
+      case (it @ Cause.Fail(ReturnResponseWithExceptionError(err, response), _), _)     => ZIO.logErrorCause("RRWE"   , it)  *> ZIO.succeed(response)
+      case (err                                                                , trace) => ZIO.logErrorCause("Failure", err) *> ise(err.squash, Some(trace))
+    }.catchAllDefect(
+      err                                                                               => ZIO.logErrorCause("Defect", Cause.die(err)) *> ise(err)
+    )
   }
 
   //    def trap(task: ZIO[Any, Throwable, Response]): Task[Response] = {
