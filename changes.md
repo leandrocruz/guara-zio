@@ -1,5 +1,13 @@
 # Guara
 
+## Release v1.1.5
+on: 24/Mar/2025
+
+ - Propagating the root exception at ReturnResponseWithExceptionError
+
+## Release v1.1.4
+on: 24/Mar/2025
+
  - Sandboxing erros at `ensureResponse`
  - Returning structure error information as json
 
