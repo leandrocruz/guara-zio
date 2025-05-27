@@ -12,6 +12,7 @@ object config {
   import zio.http.Header
   import zio.http.Header.{AccessControlAllowOrigin, AccessControlAllowMethods, Origin}
   import zio.http.Middleware.CorsConfig
+  import java.io.File
 
   case class KafkaConsumerConfig(enabled: Boolean, group: String, topic: String)
   case class KafkaConfig(key: String, secret: String, servers: Seq[String], consumer: KafkaConsumerConfig)
@@ -34,6 +35,10 @@ object config {
 
     val layer = ZLayer {
       TypesafeConfigProvider.fromResourcePath(enableCommaSeparatedValueAsList = true).load(deriveConfig[GuaraConfig])
+    }
+
+    def from(file: File) = ZLayer {
+      TypesafeConfigProvider.fromHoconFile(file, enableCommaSeparatedValueAsList = true).load(deriveConfig[GuaraConfig])
     }
   }
 }
@@ -624,5 +629,6 @@ trait GuaraApp extends ZIOAppDefault {
       _      <- Server.serve(router.routes)
     yield ()
 
-  def startGuara: ZIO[BackgroundServices & Router, Throwable, Unit] = services.provideSomeLayer(basic)
+  def startGuara         : ZIO[BackgroundServices & Router              , Throwable, Unit] = services.provideSomeLayer(basic)
+  def startGuaraNoConfig : ZIO[BackgroundServices & Router & GuaraConfig, Throwable, Unit] = services.provideSomeLayer(srv)
 }

@@ -1,5 +1,10 @@
 # Guara
 
+## Release v1.1.6
+on: 27/May/2025
+
+ - Added `startGuaraNoConfig`
+
 ## Release v1.1.5
 on: 24/Mar/2025
 
