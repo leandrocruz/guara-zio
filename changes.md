@@ -1,5 +1,11 @@
 # Guara
 
+## Release v1.1.7
+on: 28/May/2025
+
+ - Added `CorsConfig.from(String)`
+ - `GuaraApp.services` is now public 
+
 ## Release v1.1.6
 on: 27/May/2025
 
