@@ -37,9 +37,8 @@ object config {
       TypesafeConfigProvider.fromResourcePath(enableCommaSeparatedValueAsList = true).load(deriveConfig[GuaraConfig])
     }
 
-    def from(file: File) = ZLayer {
-      TypesafeConfigProvider.fromHoconFile(file, enableCommaSeparatedValueAsList = true).load(deriveConfig[GuaraConfig])
-    }
+    def from(config: String) = ZLayer { TypesafeConfigProvider.fromHoconString(config, enableCommaSeparatedValueAsList = true).load(deriveConfig[GuaraConfig]) }
+    def from(file: File)     = ZLayer { TypesafeConfigProvider.fromHoconFile  (file  , enableCommaSeparatedValueAsList = true).load(deriveConfig[GuaraConfig]) }
   }
 }
 
@@ -618,7 +617,7 @@ trait GuaraApp extends ZIOAppDefault {
   private val srv   : ZLayer[GuaraConfig, Throwable, Server]               = HttpServer.layer
   private val basic : ZLayer[Any        , Throwable, GuaraConfig & Server] = GuaraConfig.layer >>> (srv ++ GuaraConfig.layer)
 
-  private def services: ZIO[BackgroundServices & Router & Server & GuaraConfig, Throwable, Unit] =
+  def services: ZIO[BackgroundServices & Router & Server & GuaraConfig, Throwable, Unit] =
     for
       config <- ZIO.service[GuaraConfig]
       router <- ZIO.service[Router]
