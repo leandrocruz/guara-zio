@@ -1,5 +1,11 @@
 # Guara
 
+## Release v1.1.8
+on: 12/Jun/2025
+
+ - Updating zio dependencies
+ - Added `HttpConfig.maxHeaderSize` and `HttpConfig.maxLineSize`
+
 ## Release v1.1.7
 on: 28/May/2025
 
