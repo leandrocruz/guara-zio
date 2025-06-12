@@ -1,14 +1,14 @@
-lazy val ZioVersion        = "2.1.16"
-lazy val ZioConfigVersion  = "4.0.3"
-lazy val ZHTTPVersion      = "3.1.0"
-lazy val ZioJsonVersion    = "0.7.39"
+lazy val ZioVersion        = "2.1.19"
+lazy val ZioConfigVersion  = "4.0.4"
+lazy val ZHTTPVersion      = "3.3.3"
+lazy val ZioJsonVersion    = "0.7.43"
 lazy val ZioLoggingVersion = "2.5.0"
-lazy val Logback2Version   = "1.5.17"
+lazy val Logback2Version   = "1.5.18"
 lazy val Slf4j2Version     = "2.0.12"
 
 organization                 := "guara"
 name                         := "guara-framework"
-version                      := "v1.1.7"
+version                      := "v1.1.8"
 doc / sources                := Seq.empty
 packageDoc / publishArtifact := false
 testFrameworks               += new TestFramework("zio.test.sbt.ZTestFramework")
