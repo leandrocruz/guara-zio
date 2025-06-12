@@ -17,7 +17,7 @@ object config {
   case class KafkaConsumerConfig(enabled: Boolean, group: String, topic: String)
   case class KafkaConfig(key: String, secret: String, servers: Seq[String], consumer: KafkaConsumerConfig)
   case class HttpSSLConfig(certificate: String, key: String)
-  case class HttpConfig(port: Int, maxRequestSize: Int, ssl: Option[HttpSSLConfig])
+  case class HttpConfig(port: Int, maxRequestSize: Int, maxHeaderSize: Option[Int], maxLineSize: Option[Int], ssl: Option[HttpSSLConfig])
   case class MorbidConfig(url: String, magic: String, updateEvery: Duration)
   case class JwtConfig(key: String)
   case class GuaraConfig(name: String, jwt: JwtConfig, morbid: MorbidConfig, http: HttpConfig, kafka: KafkaConfig)
@@ -337,6 +337,8 @@ object http {
         .defaultWith(
           _ .port(cfg.http.port)
             .requestStreaming(RequestStreaming.Disabled(cfg.http.maxRequestSize))
+            .maxInitialLineLength(cfg.http.maxLineSize.getOrElse(4096))
+            .maxHeaderSize(cfg.http.maxHeaderSize.getOrElse(8192))
             .copy(
               sslConfig = cfg.http.ssl.map(toSSLConfig)
             )
