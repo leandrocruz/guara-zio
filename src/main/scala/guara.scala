@@ -221,6 +221,14 @@ object utils {
 
   val utf8 = Charset.forName("utf8")
 
+  case class UnifiedErrorFormat(
+    origin  : Origin,
+    message : String,
+    trace   : Option[String]
+  )
+
+  given JsonEncoder[UnifiedErrorFormat] = DeriveJsonEncoder.gen
+
   extension (body: zio.http.Body) {
 
     def parse[T](logBody: Boolean = false)(using jsonDecoder: JsonDecoder[T], charset: Charset = utf8): Task[T] = {
@@ -272,7 +280,7 @@ object utils {
         case None                          => ExceptionUtils.getStackTrace(cause)
         case Some(value)                   => ExceptionUtils.getStackTrace(cause)
 
-      val response = Response.json(s"""{ "origin":"$origin", "message":"${cause.getMessage}", "trace":${stack.replaceAll("\n", "||")}  }""")
+      val response = Response.json(UnifiedErrorFormat(origin, cause.getMessage, Some(stack)).toJson)
       response.copy(status = Status.InternalServerError, headers = response.headers ++ Headers(Header.Custom("Error", cause.getMessage)))
     }
 

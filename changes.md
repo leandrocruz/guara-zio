@@ -1,5 +1,10 @@
 # Guara
 
+## Release v1.1.9
+on: 01/Sep/2025
+
+ - Fixed serialization for `UnifiedErrorFormat`
+
 ## Release v1.1.8
 on: 12/Jun/2025
 
