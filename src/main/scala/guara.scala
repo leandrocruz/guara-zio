@@ -273,38 +273,26 @@ object utils {
 
   def ensureResponse(task: Task[Response])(using origin: Origin): Task[Response] = {
 
-    def ise(cause: Throwable, trace: Option[StackTrace] = None) = ZIO.succeed {
+    def ise(cause: Throwable, trace: Option[StackTrace] = None) = {
 
       val stack = trace match
         case Some(value) if !value.isEmpty => value.prettyPrint
+        case Some(_)                       => ExceptionUtils.getStackTrace(cause)
         case None                          => ExceptionUtils.getStackTrace(cause)
-        case Some(value)                   => ExceptionUtils.getStackTrace(cause)
 
       val response = Response.json(UnifiedErrorFormat(origin, cause.getMessage, Some(stack)).toJson)
       response.copy(status = Status.InternalServerError, headers = response.headers ++ Headers(Header.Custom("Error", cause.getMessage)))
     }
 
-    task.sandbox.catchAllTrace {
-      case (     Cause.Fail(ReturnResponseError(response)                  , _), _)     => ZIO.succeed(response)
-      case (it @ Cause.Fail(ReturnResponseWithExceptionError(err, response), _), _)     => ZIO.logErrorCause("RRWEE"  , it)  *> ZIO.succeed(response)
-      case (err                                                                , trace) => ZIO.logErrorCause("Failure", err) *> ise(err.squash, Some(trace))
-    }.catchAllDefect(
-      err                                                                               => ZIO.logErrorCause("Defect", Cause.die(err)) *> ise(err)
-    )
+    task
+      .sandbox
+      .catchAllTrace {
+        case (Cause.Fail(ReturnResponseError(response)                , _), _)     => ZIO.succeed(response)
+        case (Cause.Fail(ReturnResponseWithExceptionError(_, response), _), _)     => ZIO.succeed(response)
+        case (cause                                                       , trace) => ZIO.succeed(ise(cause.squash, Some(trace)))
+      }
+      .catchAllDefect { err => ZIO.succeed(ise(err)) }
   }
-
-  //    def trap(task: ZIO[Any, Throwable, Response]): Task[Response] = {
-  //      task.catchAllCause {
-  //        case it@Cause.Empty => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-  //        case it@Cause.Die(throwable, trace) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-  //        case it@Cause.Interrupt(fiberId, trace) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-  //        case it@Cause.Stackless(cause, stackless) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-  //        case it@Cause.Then(left, right) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-  //        case it@Cause.Both(left, right) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-  //        case it@Cause.Fail(pe: GuaraError, trace) => ZIO.logErrorCause(pe.asErrorMessage, it) *> pe.asResponse
-  //        case it@Cause.Fail(ex, trace) => ZIO.logErrorCause("", it) *> ZIO.succeed(Response.internalServerError("TODO"))
-  //      }
-  //    }
 
   extension (params: QueryParams)
     def get(name: String): Option[String] = params.getAll(name).headOption
