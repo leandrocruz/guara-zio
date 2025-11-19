@@ -8,13 +8,13 @@ lazy val Slf4j2Version     = "2.0.12"
 
 organization                 := "guara"
 name                         := "guara-framework"
-version                      := "v1.1.9"
+version                      := "v1.1.10"
 doc / sources                := Seq.empty
 packageDoc / publishArtifact := false
 testFrameworks               += new TestFramework("zio.test.sbt.ZTestFramework")
 libraryDependencies          ++= Seq(
   "com.github.pathikrit" %% "better-files-akka"          % "3.9.2"                 ,
-  "org.apache.commons"   %  "commons-lang3"              % "3.17.0"                ,
+  "org.apache.commons"   %  "commons-lang3"              % "3.20.0"                ,
   "dev.zio"              %% "zio-http"                   % ZHTTPVersion            ,
   "dev.zio"              %% "zio-json"                   % ZioJsonVersion          ,
   "dev.zio"              %% "zio-kafka"                  % "2.8.2"                 ,

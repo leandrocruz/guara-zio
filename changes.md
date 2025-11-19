@@ -1,5 +1,11 @@
 # Guara
 
+## Release v1.1.10
+on: 19/Nov/2025
+
+ - Do not log errors at `ensureResponse`
+ - Upgrading `commons-lang3` (3.17.0 to 3.20.0) because of CVE-2025-48924
+
 ## Release v1.1.9
 on: 01/Sep/2025
 
