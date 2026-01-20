@@ -1,5 +1,10 @@
 # Guara
 
+## Release v1.1.12
+on: 20/Jan/2026
+
+ - Moving src/main/resources/logback.xml to src/test/resources/logback-test.xml
+
 ## Release v1.1.11
 on: 17/Dec/2025
 
