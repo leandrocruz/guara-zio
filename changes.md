@@ -1,5 +1,10 @@
 # Guara
 
+## Release v1.1.13
+on: 09/Feb/2026
+
+ - Including '(' and ')' for json regex validation
+
 ## Release v1.1.12
 on: 20/Jan/2026
 
