@@ -1,5 +1,8 @@
 # Guara
 
+## Release v1.2.0
+on: 31/Mar/2026
+
  - [Leandro] Added `SafeResponse` opaque type to prevent accidental nesting of `ensureResponse` calls
  - [Leandro] Changed `ensureResponse` return type from `Task[Response]` to `SafeResponse` with explicit `.toTask` unwrapping
 
