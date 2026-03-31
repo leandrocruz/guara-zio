@@ -271,7 +271,14 @@ object utils {
     z.provide(ZLayer.succeed(client), ZLayer.succeed(scope))
   }
 
-  def ensureResponse(task: Task[Response])(using origin: Origin): Task[Response] = {
+  opaque type SafeResponse = Task[Response]
+
+  object SafeResponse {
+    extension (sr: SafeResponse)
+      def toTask: Task[Response] = sr
+  }
+
+  def ensureResponse(task: Task[Response])(using origin: Origin): SafeResponse = {
 
     def ise(cause: Throwable, trace: Option[StackTrace] = None) = {
 
