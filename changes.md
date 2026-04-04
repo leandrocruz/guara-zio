@@ -1,5 +1,11 @@
 # Guara
 
+
+## Release v1.3.0
+on: 04/04/2026
+
+ - [Leandro] Using scala v3.7.2
+
 ## Release v1.2.0
 on: 31/Mar/2026
 
