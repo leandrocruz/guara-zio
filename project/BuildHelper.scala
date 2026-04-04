@@ -2,7 +2,7 @@ import sbt._
 import sbt.Keys._
 
 object BuildHelper {
-  val Scala3   = "3.3.3"
+  val Scala3   = "3.7.2"
   val Scala212 = "2.12.19"
   val Scala213 = "2.13.14"
 
