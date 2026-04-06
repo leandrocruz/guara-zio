@@ -1,94 +1,10 @@
 package guara
 
 import zio.*
-
-object config {
-
-  import zio.config.*
-  import zio.config.magnolia.*
-  import zio.config.typesafe.*
-  import Config.*
-
-  import zio.http.Header
-  import zio.http.Header.{AccessControlAllowOrigin, AccessControlAllowMethods, Origin}
-  import zio.http.Middleware.CorsConfig
-  import java.io.File
-
-  case class KafkaConsumerConfig(enabled: Boolean, group: String, topic: String)
-  case class KafkaConfig(key: String, secret: String, servers: Seq[String], consumer: KafkaConsumerConfig)
-  case class HttpSSLConfig(certificate: String, key: String)
-  case class HttpConfig(port: Int, maxRequestSize: Int, maxHeaderSize: Option[Int], maxLineSize: Option[Int], ssl: Option[HttpSSLConfig])
-  case class MorbidConfig(url: String, magic: String, updateEvery: Duration)
-  case class JwtConfig(key: String)
-  case class GuaraConfig(name: String, jwt: JwtConfig, morbid: MorbidConfig, http: HttpConfig, kafka: KafkaConfig)
-
-  object GuaraConfig {
-
-    val cors = ZLayer.succeed {
-      def allowedOrigin(origin: Origin): Option[Header.AccessControlAllowOrigin] = Some(AccessControlAllowOrigin.All)
-
-      CorsConfig(
-        allowedOrigin = allowedOrigin,
-        allowedMethods = AccessControlAllowMethods.All,
-      )
-    }
-
-    val layer = ZLayer {
-      TypesafeConfigProvider.fromResourcePath(enableCommaSeparatedValueAsList = true).load(deriveConfig[GuaraConfig])
-    }
-
-    def from(config: String) = ZLayer { TypesafeConfigProvider.fromHoconString(config, enableCommaSeparatedValueAsList = true).load(deriveConfig[GuaraConfig]) }
-    def from(file: File)     = ZLayer { TypesafeConfigProvider.fromHoconFile  (file  , enableCommaSeparatedValueAsList = true).load(deriveConfig[GuaraConfig]) }
-  }
-}
-
-object errors {
-
-  import zio.http.Response
-  import zio.http.Status
-
-  case class ReturnResponseError              (response: Response)                   extends Exception
-  case class ReturnResponseWithExceptionError (cause: Throwable, response: Response) extends Exception(cause)
-
-  object GuaraError {
-
-    def of(response: Response)                   = ReturnResponseError(response)
-    def of(response: Response)(cause: Throwable) = ReturnResponseWithExceptionError(cause, response)
-
-    def fail[A](                  response: Response) : Task[A] = ZIO.fail(of(response))
-    def fail[A](cause: Throwable, response: Response) : Task[A] = ZIO.fail(of(response)(cause))
-  }
-}
-
-object domain {
-
-  import zio.json.*
-  import zio.http.URL
-  import java.util.UUID
-  import java.time.LocalDateTime
-  import java.time.format.DateTimeFormatter
-  import scala.concurrent.duration.Duration
-
-  case class RequestId(id: String) {
-    def track = ZIOAspect.annotated("rid", id)
-  }
-
-  object RequestId {
-    def from(id: String)  : Task[RequestId]           = ZIO.succeed(RequestId(id))
-    def decode(id: String): Either[String, RequestId] = Right(RequestId(id))
-  }
-
-  private val format = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
-
-  given JsonDecoder[RequestId]              = JsonDecoder[String].mapOrFail(RequestId.decode)
-  given JsonDecoder[Duration]               = JsonDecoder[String].map(Duration.apply)
-  given JsonEncoder[Duration]               = JsonEncoder[String].contramap(_.toMillis + "ms")
-  given JsonDecoder[LocalDateTime]          = JsonDecoder[String].map(ldt => LocalDateTime.parse(ldt, format))
-}
+import guara.config.*
 
 object morbid {
 
-  import config.*
   import domain.*
   import zio.http.*
   import zio.json.*
@@ -204,218 +120,8 @@ object id {
   }
 }
 
-object utils {
-
-  import errors.*
-  import zio.http.*
-  import zio.json.*
-  import scala.util.matching.Regex
-  import java.nio.charset.Charset
-  import org.apache.commons.lang3.exception.ExceptionUtils
-
-  opaque type Origin = String
-
-  object Origin {
-    def of(origin: String): Origin = origin
-  }
-
-  val utf8 = Charset.forName("utf8")
-
-  case class UnifiedErrorFormat(
-    origin  : Origin,
-    message : String,
-    trace   : Option[String]
-  )
-
-  given JsonEncoder[UnifiedErrorFormat] = DeriveJsonEncoder.gen
-
-  extension (body: zio.http.Body) {
-
-    def parse[T](logBody: Boolean = false)(using jsonDecoder: JsonDecoder[T], charset: Charset = utf8): Task[T] = {
-      for {
-        str   <- body.asString(charset)
-        value <- str.fromJson[T] match {
-                   case Right(value) => ZIO.succeed(value)
-                   case Left(err)    => ZIO.fail(new Exception(s"Failure parsing json body: '$err' ${if(logBody) s" (BODY/$charset: $str)" else "" }"))
-                 }
-      } yield value
-    }
-  }
-
-  // w = [a-zA-Z_0-9]
-
-  val code      = "[a-zA-Z0-9_]+".r
-  val name      = "[\\w.\\- ]+".r
-  val latinName = "[À-ſ\\w.\\-&, ()'/]+".r
-
-  def safeDecode(regex: Regex, maxLength: Int) = {
-    JsonDecoder.string.mapOrFail { str =>
-      (str.length > maxLength, regex.matches(str)) match
-        case (true, _)  => Left(s"'$str' must have at most $maxLength chars")
-        case (_, false) => Left(s"'$str' has invalid chars")
-        case (_, true)  => Right(str.trim.replaceAll(" +", " "))
-    }
-  }
-
-  def safeCode      = safeDecode(code     , _)
-  def safeName      = safeDecode(name     , _)
-  def safeLatinName = safeDecode(latinName, _)
-
-  extension (string: String)
-    def as[T]: T = string.asInstanceOf[T]
-
-  extension (long: Long)
-    def as[T]: T = long.asInstanceOf[T]
-
-  def call(z: ZIO[Client & Scope, Throwable, Response])(using client: Client, scope: Scope): Task[Response] = {
-    z.provide(ZLayer.succeed(client), ZLayer.succeed(scope))
-  }
-
-  opaque type SafeResponse = Task[Response]
-
-  object SafeResponse {
-    extension (sr: SafeResponse)
-      def toTask: Task[Response] = sr
-  }
-
-  def ensureResponse(task: Task[Response])(using origin: Origin): SafeResponse = {
-
-    def ise(cause: Throwable, trace: Option[StackTrace] = None) = {
-
-      val stack = trace match
-        case Some(value) if !value.isEmpty => value.prettyPrint
-        case Some(_)                       => ExceptionUtils.getStackTrace(cause)
-        case None                          => ExceptionUtils.getStackTrace(cause)
-
-      val response = Response.json(UnifiedErrorFormat(origin, cause.getMessage, Some(stack)).toJson)
-      response.copy(status = Status.InternalServerError, headers = response.headers ++ Headers(Header.Custom("Error", cause.getMessage)))
-    }
-
-    task
-      .sandbox
-      .catchAllTrace {
-        case (Cause.Fail(ReturnResponseError(response)                , _), _)     => ZIO.succeed(response)
-        case (Cause.Fail(ReturnResponseWithExceptionError(_, response), _), _)     => ZIO.succeed(response)
-        case (cause                                                       , trace) => ZIO.succeed(ise(cause.squash, Some(trace)))
-      }
-      .catchAllDefect { err => ZIO.succeed(ise(err)) }
-  }
-
-  extension (params: QueryParams)
-    def get(name: String): Option[String] = params.getAll(name).headOption
-
-  extension (url: URL)
-    def queryParams(params: QueryParams): URL = url.updateQueryParams(_ => params)
-}
-
-object http {
-
-  import config.GuaraConfig
-  import zio.http.Server
-  import zio.http.Server.RequestStreaming
-  import guara.config.HttpSSLConfig
-  import zio.http.*
-  import zio.http.SSLConfig.HttpBehaviour
-  import zio.json.*
-
-  def urlFrom(raw: String) = ZIO.fromEither(URL.decode(raw)).mapError(err => Exception(s"Error parsing '$raw'"))
-
-  object HttpServer {
-    val layer = ZLayer.fromZIO {
-
-      def toSSLConfig(ssl: HttpSSLConfig) = {
-        SSLConfig.fromResource(
-          behaviour               = HttpBehaviour.Redirect,
-          certPath                = ssl.certificate,
-          keyPath                 = ssl.key,
-          clientAuth              = None,
-          trustCertCollectionPath = None,
-          includeClientCert       = false,
-        )
-      }
-
-      for {
-        cfg <- ZIO.service[GuaraConfig]
-      } yield Server
-        .defaultWith(
-          _ .port(cfg.http.port)
-            .requestStreaming(RequestStreaming.Disabled(cfg.http.maxRequestSize))
-            .maxInitialLineLength(cfg.http.maxLineSize.getOrElse(4096))
-            .maxHeaderSize(cfg.http.maxHeaderSize.getOrElse(8192))
-            .copy(
-              sslConfig = cfg.http.ssl.map(toSSLConfig)
-            )
-        )
-    }.flatten
-  }
-
-  object client {
-
-    object headers {
-      val applicationJson = Header.ContentType(MediaType.application.json)
-    }
-
-    trait ResponseHandler[T] {
-      def handle(response: Response): Task[T]
-    }
-
-//    trait BodyBuilder[T] {
-//      def build(t: T): Task[Body]
-//    }
-
-    object handlers {
-
-      val asText: ResponseHandler[String] = (res: Response) => res.body.asString
-
-      def asTextIf(expected: Int): ResponseHandler[String] = (res: Response) => {
-        for
-          _    <- ZIO.when(res.status.code != expected) { ZIO.fail(Exception(s"Status code is ${res.status.code}. Expected $expected")) }
-          text <- asText.handle(res)
-        yield text
-      }
-
-      def asJson[T](using JsonDecoder[T]): ResponseHandler[T] = (res: Response) => {
-        for
-          text  <- res.body.asString
-          value <- ZIO.fromEither(text.fromJson[T]).mapError(msg => Exception(s"Error decoding json: '$msg'"))
-        yield value
-      }
-
-      def asJsonIf[T](expected: Int)(using JsonDecoder[T]): ResponseHandler[T] = (res: Response) => {
-        for
-          _    <- ZIO.when(res.status.code != expected) { ZIO.fail(Exception(s"Status code is ${res.status.code}. Expected $expected")) }
-          value <- asJson.handle(res)
-        yield value
-      }
-    }
-
-    case class PinnedHttpClient(base: URL, fixed: Headers) {
-
-      def execute[T](request: Request)(using handler: ResponseHandler[T]): ZIO[Client, Throwable, T] = {
-        for
-          res    <- Client.batched(request)//.provideLayer(ZLayer.succeed(client))
-          result <- handler.handle(res)
-        yield result
-      }
-
-      def get[T](url: URL, extra: Headers = Headers.empty)(using ResponseHandler[T]) = execute {
-        Request.get(base ++ url).addHeaders(fixed.addHeaders(extra))
-      }
-
-      def post[T](url: URL, extra: Headers = Headers.empty)(body: Body)(using ResponseHandler[T]) = execute {
-        Request.post(base ++ url, body).addHeaders(fixed.addHeaders(extra))
-      }
-
-      def postJson[T, B](url: URL, extra: Headers = Headers.empty)(body: B)(using ResponseHandler[T], JsonEncoder[B]) = execute {
-        Request.post(base ++ url, Body.fromString(body.toJson)).addHeaders(fixed.addHeaders(extra).addHeader(headers.applicationJson))
-      }
-    }
-  }
-}
-
 object kafka {
 
-  import config.*
   import processor.*
   import zio.kafka.consumer.*
   import zio.kafka.serde.Serde
@@ -541,7 +247,6 @@ object background {
 object processor {
 
   import domain.*
-  import config.*
   import zio.kafka.consumer.CommittableRecord
   import java.time.{LocalDateTime, ZonedDateTime}
 
@@ -560,7 +265,6 @@ object processor {
 
 object router {
 
-  import config.*
   import domain.*
   import morbid.Morbid
 
@@ -613,11 +317,43 @@ object router {
 
 trait GuaraApp extends ZIOAppDefault {
 
-  import config.GuaraConfig
-  import http.HttpServer
   import router.Router
   import background.BackgroundServices
   import zio.http.Server
+
+  object HttpServer {
+    val layer = ZLayer.fromZIO {
+
+      import guara.config.HttpSSLConfig
+      import zio.http.*
+      import zio.http.SSLConfig.HttpBehaviour
+      import zio.http.Server.RequestStreaming
+
+      def toSSLConfig(ssl: HttpSSLConfig) = {
+        SSLConfig.fromResource(
+          behaviour               = HttpBehaviour.Redirect,
+          certPath                = ssl.certificate,
+          keyPath                 = ssl.key,
+          clientAuth              = None,
+          trustCertCollectionPath = None,
+          includeClientCert       = false,
+        )
+      }
+
+      for {
+        cfg <- ZIO.service[GuaraConfig]
+      } yield Server
+        .defaultWith(
+          _ .port(cfg.http.port)
+            .requestStreaming(RequestStreaming.Disabled(cfg.http.maxRequestSize))
+            .maxInitialLineLength(cfg.http.maxLineSize.getOrElse(4096))
+            .maxHeaderSize(cfg.http.maxHeaderSize.getOrElse(8192))
+            .copy(
+              sslConfig = cfg.http.ssl.map(toSSLConfig)
+            )
+        )
+    }.flatten
+  }
 
   private val srv   : ZLayer[GuaraConfig, Throwable, Server]               = HttpServer.layer
   private val basic : ZLayer[Any        , Throwable, GuaraConfig & Server] = GuaraConfig.layer >>> (srv ++ GuaraConfig.layer)
