@@ -1,115 +1,113 @@
-package guara
+package guara.http.client
 
-object http {
+import guara.http.errors.ReturnResponseError
+import guara.http.{UnifiedErrorFormat, headers}
+import zio.*
+import zio.http.*
 
-  import zio.*
-  import zio.http.*
-  import scala.util.{Try, Success, Failure}
+trait RequestEncoder[T] {
+  def encode(value: T): Either[String, String]
+}
 
-  def urlFrom(raw: String) = ZIO.fromEither(URL.decode(raw)).mapError(err => Exception(s"Error parsing '$raw'"))
+trait ResponseDecoder[T] {
+  def decode(text: String): Either[String, T]
+}
 
-  object client {
+trait ResponseHandler[T] {
+  def handle(response: Response): Task[T]
+}
 
-    object headers {
-      val applicationJson = Header.ContentType(MediaType.application.json)
-    }
+/** Intermediate result after encoding the request body — call `.as[T]` to decode the response. */
+class EncodedRequest(client: GuaraHttpClient, request: Request) {
+  def as[T](using handler: ResponseHandler[T]): Task[T] = client.execute(request)
+}
 
-    trait RequestEncoder[T] {
-      def encode(value: T): Either[String, String]
-    }
+object handlers {
 
-    trait ResponseDecoder[T] {
-      def decode(text: String): Either[String, T]
-    }
+  val asText: ResponseHandler[String] = (res: Response) => res.body.asString
 
-    trait ResponseHandler[T] {
-      def handle(response: Response): Task[T]
-    }
+  def uef[T](nested: ResponseHandler[T]): ResponseHandler[T] = (response: Response) => {
+    for
+      maybe  <- UnifiedErrorFormat.fromResponse(response)
+      result <- maybe match
+                  case Some(_) => ZIO.fail(ReturnResponseError(response))
+                  case None    => nested.handle(response)
+    yield result
+  }
 
-    object handlers {
+  def asTextIf(expected: Int): ResponseHandler[String] = (res: Response) => {
+    for
+      _    <- ZIO.when(res.status.code != expected) { ZIO.fail(Exception(s"Status code is ${res.status.code}. Expected $expected")) }
+      text <- asText.handle(res)
+    yield text
+  }
 
-      val asText: ResponseHandler[String] = (res: Response) => res.body.asString
+  def decode[T](using dec: ResponseDecoder[T]): ResponseHandler[T] = (res: Response) => {
+    for
+      text  <- res.body.asString
+      value <- ZIO.fromEither(dec.decode(text)).mapError(msg => Exception(s"Error decoding response: '$msg'"))
+    yield value
+  }
 
-      def asTextIf(expected: Int): ResponseHandler[String] = (res: Response) => {
-        for
-          _    <- ZIO.when(res.status.code != expected) { ZIO.fail(Exception(s"Status code is ${res.status.code}. Expected $expected")) }
-          text <- asText.handle(res)
-        yield text
-      }
+  def decodedIf[T](expected: Int)(using dec: ResponseDecoder[T]): ResponseHandler[T] = (res: Response) => {
+    for
+      _     <- ZIO.when(res.status.code != expected) { ZIO.fail(Exception(s"Status code is ${res.status.code}. Expected $expected")) }
+      value <- decode.handle(res)
+    yield value
+  }
+}
 
-      def asDecoded[T](using dec: ResponseDecoder[T]): ResponseHandler[T] = (res: Response) => {
-        for
-          text  <- res.body.asString
-          value <- ZIO.fromEither(dec.decode(text)).mapError(msg => Exception(s"Error decoding response: '$msg'"))
-        yield value
-      }
+object GuaraHttpClient {
 
-      def asDecodedIf[T](expected: Int)(using dec: ResponseDecoder[T]): ResponseHandler[T] = (res: Response) => {
-        for
-          _     <- ZIO.when(res.status.code != expected) { ZIO.fail(Exception(s"Status code is ${res.status.code}. Expected $expected")) }
-          value <- asDecoded.handle(res)
-        yield value
-      }
-    }
+  import zio.http.netty.NettyConfig
 
-    object GuaraHttpClient {
+  /** Default Client ZLayer: no connection pooling, fast shutdown, default DNS resolver. */
+  val layer: ZLayer[Any, Throwable, Client] =
+    (ZLayer.succeed(ZClient.Config.default.disabledConnectionPool) ++ ZLayer.succeed(NettyConfig.defaultWithFastShutdown) ++ DnsResolver.default) >>> Client.live
 
-      import zio.http.netty.NettyConfig
+  /** Build a GuaraHttpClient from a base URL and fixed headers, using the default Client layer. */
+  def make(base: URL, fixed: Headers = Headers.empty): ZIO[Client & Scope, Nothing, GuaraHttpClient] =
+    for
+      client <- ZIO.service[Client]
+      scope  <- ZIO.service[Scope]
+    yield GuaraHttpClient(base, fixed, client, scope)
+}
 
-      /** Default Client ZLayer: no connection pooling, fast shutdown, default DNS resolver. */
-      val layer: ZLayer[Any, Throwable, Client] =
-        (ZLayer.succeed(ZClient.Config.default.disabledConnectionPool) ++ ZLayer.succeed(NettyConfig.defaultWithFastShutdown) ++ DnsResolver.default) >>> Client.live
+case class GuaraHttpClient(base: URL, fixed: Headers, zClient: Client, scope: Scope) {
 
-      /** Build a GuaraHttpClient from a base URL and fixed headers, using the default Client layer. */
-      def make(base: URL, fixed: Headers = Headers.empty): ZIO[Client & Scope, Nothing, GuaraHttpClient] =
-        for
-          client <- ZIO.service[Client]
-          scope  <- ZIO.service[Scope]
-        yield GuaraHttpClient(base, fixed, client, scope)
-    }
+  private def perform(request: Request): Task[Response] =
+    ZClient.batched(request).provide(ZLayer.succeed(zClient))
 
-    /** Intermediate result after encoding the request body — call `.as[T]` to decode the response. */
-    class EncodedRequest(client: GuaraHttpClient, request: Request) {
-      def as[T](using handler: ResponseHandler[T]): Task[T] = client.execute(request)
-    }
+  def execute[T](request: Request)(using handler: ResponseHandler[T]): Task[T] = {
+    for
+      res    <- perform(request)
+      result <- handler.handle(res)
+    yield result
+  }
 
-    case class GuaraHttpClient(base: URL, fixed: Headers, zClient: Client, scope: Scope) {
+  def get[T](url: URL, extra: Headers = Headers.empty)(using ResponseHandler[T]): Task[T] = execute {
+    Request.get(base ++ url).addHeaders(fixed.addHeaders(extra))
+  }
 
-      private def perform(request: Request): Task[Response] =
-        ZClient.request(request).provide(ZLayer.succeed(zClient), ZLayer.succeed(scope))
+  def post[T](url: URL, extra: Headers = Headers.empty)(body: Body)(using ResponseHandler[T]): Task[T] = execute {
+    Request.post(base ++ url, body).addHeaders(fixed.addHeaders(extra))
+  }
 
-      def execute[T](request: Request)(using handler: ResponseHandler[T]): Task[T] = {
-        for
-          res    <- perform(request)
-          result <- handler.handle(res)
-        yield result
-      }
+  def postJson[B](url: URL, extra: Headers = Headers.empty)(body: B)(using enc: RequestEncoder[B]): EncodedRequest = {
+    val encoded = enc.encode(body).fold(msg => throw Exception(s"Error encoding request: '$msg'"), identity)
+    EncodedRequest(this, Request.post(base ++ url, Body.fromString(encoded)).addHeaders(fixed.addHeaders(extra).addHeader(headers.applicationJson)))
+  }
 
-      def get[T](url: URL, extra: Headers = Headers.empty)(using ResponseHandler[T]): Task[T] = execute {
-        Request.get(base ++ url).addHeaders(fixed.addHeaders(extra))
-      }
+  def put[T](url: URL, extra: Headers = Headers.empty)(body: Body)(using ResponseHandler[T]): Task[T] = execute {
+    Request.put(base ++ url, body).addHeaders(fixed.addHeaders(extra))
+  }
 
-      def post[T](url: URL, extra: Headers = Headers.empty)(body: Body)(using ResponseHandler[T]): Task[T] = execute {
-        Request.post(base ++ url, body).addHeaders(fixed.addHeaders(extra))
-      }
+  def putJson[B](url: URL, extra: Headers = Headers.empty)(body: B)(using enc: RequestEncoder[B]): EncodedRequest = {
+    val encoded = enc.encode(body).fold(msg => throw Exception(s"Error encoding request: '$msg'"), identity)
+    EncodedRequest(this, Request.put(base ++ url, Body.fromString(encoded)).addHeaders(fixed.addHeaders(extra).addHeader(headers.applicationJson)))
+  }
 
-      def postJson[B](url: URL, extra: Headers = Headers.empty)(body: B)(using enc: RequestEncoder[B]): EncodedRequest = {
-        val encoded = enc.encode(body).fold(msg => throw Exception(s"Error encoding request: '$msg'"), identity)
-        EncodedRequest(this, Request.post(base ++ url, Body.fromString(encoded)).addHeaders(fixed.addHeaders(extra).addHeader(headers.applicationJson)))
-      }
-
-      def put[T](url: URL, extra: Headers = Headers.empty)(body: Body)(using ResponseHandler[T]): Task[T] = execute {
-        Request.put(base ++ url, body).addHeaders(fixed.addHeaders(extra))
-      }
-
-      def putJson[B](url: URL, extra: Headers = Headers.empty)(body: B)(using enc: RequestEncoder[B]): EncodedRequest = {
-        val encoded = enc.encode(body).fold(msg => throw Exception(s"Error encoding request: '$msg'"), identity)
-        EncodedRequest(this, Request.put(base ++ url, Body.fromString(encoded)).addHeaders(fixed.addHeaders(extra).addHeader(headers.applicationJson)))
-      }
-
-      def delete[T](url: URL, extra: Headers = Headers.empty)(using ResponseHandler[T]): Task[T] = execute {
-        Request.delete(base ++ url).addHeaders(fixed.addHeaders(extra))
-      }
-    }
+  def delete[T](url: URL, extra: Headers = Headers.empty)(using ResponseHandler[T]): Task[T] = execute {
+    Request.delete(base ++ url).addHeaders(fixed.addHeaders(extra))
   }
 }

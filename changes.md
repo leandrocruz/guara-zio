@@ -1,5 +1,13 @@
 # Guara
 
+ - [Leandro] Major refactoring:
+   - Restructured into multi-module: guara-commons-shared, guara-commons-http, guara-client, guara-client-codec-zio, guara-client-codec-circe, guara-framework
+   - Moved error types to `guara.http.errors`, Origin/SafeResponse/UEF/ensureResponse to `guara.http`, extensions to `guara.http.extensions`, codecs to `guara.http.codec`
+   - Moved framework types to `guara.framework.*` (GuaraApp, Router, BackgroundServices, Processor)
+   - Added `guara-client-codec-zio` and `guara-client-codec-circe` modules for codec-specific RequestEncoder/ResponseDecoder givens
+   - Refactored `ensureResponse` to use `Cause.squash`/`Cause.prettyPrint` with ZIO logging for all error cases
+   - Added `ReturnErrorCode` and `ReturnErrorCodeWithException` error types
+   - Added interruption handling (503 ServiceUnavailable) in `ensureResponseWith`
 
 ## Release v1.3.0
 on: 04/04/2026
