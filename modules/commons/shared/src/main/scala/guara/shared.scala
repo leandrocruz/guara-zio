@@ -8,4 +8,3 @@ object shared {
   val name      = "[\\w.\\- ]+".r
   val latinName = "[À-ſ\\w.\\-&, ()'/]+".r
 }
-

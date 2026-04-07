@@ -1,10 +1,12 @@
 package guara.http.extensions
 
 import guara.http.codec.{*, given}
+import guara.http.errors.{ReturnErrorCode, ReturnErrorCodeWithMessage, ReturnErrorCodeWithMessageAndException}
 import guara.shared.*
 import zio.*
 import zio.http.*
 import zio.json.*
+
 import java.nio.charset.Charset
 
 extension (body: zio.http.Body) {
@@ -29,4 +31,10 @@ extension (params: QueryParams) {
 
 extension (url: URL) {
   def queryParams(params: QueryParams): URL = url.updateQueryParams(_ => params)
+}
+
+extension[T] (task: Task[T]) {
+  def uef(code: Int, message: String) = {
+    task.mapError(err => ReturnErrorCodeWithMessageAndException(code, message, err))
+  }
 }
