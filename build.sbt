@@ -11,7 +11,7 @@ ThisBuild / organization := "guara"
 ThisBuild / version      := "v2.0.0-SNAPSHOT"
 
 lazy val guara = (project in file("."))
-  .aggregate(shared, http, client, clientCodecZio, clientCodecCirce, framework)
+  .aggregate(shared, http, client, clientCodecZio, clientCodecCirce, framework, sample)
   .settings(
     name           := "guara",
     publish / skip := true,
@@ -104,4 +104,18 @@ lazy val framework = (project in file("modules/framework"))
       "ch.qos.logback"       %  "logback-classic"      % Logback2Version,
       "dev.zio"              %% "zio-test-sbt"         % ZioVersion % Test,
     ),
+  )
+
+// --- Sample ---
+
+lazy val sample = (project in file("modules/sample"))
+  .dependsOn(framework)
+  .settings(BuildHelper.stdSettings)
+  .enablePlugins(JavaAppPackaging)
+  .settings(
+    name                         := "guara-sample",
+    publish / skip               := true,
+    doc / sources                := Seq.empty,
+    packageDoc / publishArtifact := false,
+    Compile / run / mainClass    := Option("guara.sample.SampleApp"),
   )
