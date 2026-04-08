@@ -5,6 +5,7 @@
    - Moved error types to `guara.http.errors`, Origin/SafeResponse/UEF/ensureResponse to `guara.http`, extensions to `guara.http.extensions`, codecs to `guara.http.codec`
    - Moved framework types to `guara.framework.*` (GuaraApp, Router, BackgroundServices, Processor)
    - Added `guara-client-codec-zio` and `guara-client-codec-circe` modules for codec-specific RequestEncoder/ResponseDecoder givens
+   - Moved codec givens from `guara.clientCodecZio`/`guara.clientCodecCirce` objects to package-level in `guara.http.client.codec.zio`/`guara.http.client.codec.circe` for direct `import given` usage
    - Refactored `ensureResponse` to use `Cause.squash`/`Cause.prettyPrint` with ZIO logging for all error cases
    - Added `ReturnErrorCode` and `ReturnErrorCodeWithException` error types
    - Added interruption handling (503 ServiceUnavailable) in `ensureResponseWith`
