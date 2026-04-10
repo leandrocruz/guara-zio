@@ -88,6 +88,7 @@ object UnifiedErrorFormat {
       case ReturnResponseWithExceptionError(e, res) => log(res             , s"ReturnResponseWithExceptionError(${res.status.code}/${e.getMessage})")
       case ReturnErrorCodeWithException(code, e)    => log(make(Some(code)), s"ReturnErrorCodeWithException($code/${e.getMessage})")
       case ReturnErrorCode(code)                    => log(make(Some(code)), s"ReturnErrorCode($code/${squashed.getMessage})")
+      case ReturnErrorCodeWithMessage(code, msg)    => log(make(Some(code)), s"ReturnErrorCodeWithMessage($code/${msg})")
       case other                                    => log(make(None)      , s"OtherError(${squashed.getMessage})")
   }
 }
