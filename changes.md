@@ -1,5 +1,9 @@
 # Guara
 
+## Release v1.3.1
+on: 18/06/2026
+
+ - [Matheus] Atualizando o regex de `latinName` para suportar `–`
 
 ## Release v1.3.0
 on: 04/04/2026
