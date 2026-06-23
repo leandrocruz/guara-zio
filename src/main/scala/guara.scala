@@ -53,12 +53,19 @@ object errors {
 
   object GuaraError {
 
-    def of(response: Response)                   = ReturnResponseError(response)
-    def of(response: Response)(cause: Throwable) = ReturnResponseWithExceptionError(cause, response)
+    def of(response: Response)                           = ReturnResponseError(response)
+    def of(response: Response)(cause: Throwable)         = ReturnResponseWithExceptionError(cause, response)
+    def of(message: String)                              = ReturnUnifiedError(message)
+    def of(message: String)(cause: Throwable)            = ReturnUnifiedError(message, code = None      , cause = Some(cause))
+    def of(message: String, code: Int)                   = ReturnUnifiedError(message, code = Some(code), cause = None)
+    def of(message: String, code: Int)(cause: Throwable) = ReturnUnifiedError(message, code = Some(code), cause = Some(cause))
 
-    def fail[A](                  response: Response) : Task[A] = ZIO.fail(of(response))
-    def fail[A](cause: Throwable, response: Response) : Task[A] = ZIO.fail(of(response)(cause))
-    def fail[A](message: String)                      : Task[A] = ZIO.fail(ReturnUnifiedError(message))
+    def fail[A](                  response: Response)         : Task[A] = ZIO.fail(of(response))
+    def fail[A](cause: Throwable, response: Response)         : Task[A] = ZIO.fail(of(response)(cause))
+    def fail[A](message: String)                              : Task[A] = ZIO.fail(of(message))
+    def fail[A](message: String, cause: Throwable)            : Task[A] = ZIO.fail(of(message)(cause))
+    def fail[A](message: String, code: Int)                   : Task[A] = ZIO.fail(of(message, code))
+    def fail[A](message: String, code: Int, cause: Throwable) : Task[A] = ZIO.fail(of(message, code)(cause))
   }
 }
 
