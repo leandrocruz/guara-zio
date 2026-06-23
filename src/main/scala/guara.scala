@@ -47,8 +47,9 @@ object errors {
   import zio.http.Response
   import zio.http.Status
 
-  case class ReturnResponseError              (response: Response)                   extends Exception
-  case class ReturnResponseWithExceptionError (cause: Throwable, response: Response) extends Exception(cause)
+  case class ReturnUnifiedError               (message: String, code: Option[Int] = None, cause: Option[Throwable] = None) extends Exception(message, cause.orNull)
+  case class ReturnResponseError              (response: Response)                                                         extends Exception
+  case class ReturnResponseWithExceptionError (cause: Throwable, response: Response)                                       extends Exception(cause)
 
   object GuaraError {
 
@@ -57,6 +58,7 @@ object errors {
 
     def fail[A](                  response: Response) : Task[A] = ZIO.fail(of(response))
     def fail[A](cause: Throwable, response: Response) : Task[A] = ZIO.fail(of(response)(cause))
+    def fail[A](message: String)                      : Task[A] = ZIO.fail(ReturnUnifiedError(message))
   }
 }
 
@@ -183,7 +185,7 @@ object morbid {
   }
 
   object Morbid {
-    val layer = ZLayer.fromFunction(RemoteMorbid.apply _)
+    val layer = ZLayer.fromFunction(RemoteMorbid.apply)
   }
 }
 
@@ -224,10 +226,11 @@ object utils {
   case class UnifiedErrorFormat(
     origin  : Origin,
     message : String,
-    trace   : Option[String]
+    code    : Option[Int]    = None,
+    trace   : Option[String] = None
   )
 
-  given JsonEncoder[UnifiedErrorFormat] = DeriveJsonEncoder.gen
+  given JsonCodec[UnifiedErrorFormat] = DeriveJsonCodec.gen
 
   extension (body: zio.http.Body) {
 
@@ -244,9 +247,10 @@ object utils {
 
   // w = [a-zA-Z_0-9]
 
-  val code      = "[a-zA-Z0-9_]+".r
-  val name      = "[\\w.\\- ]+".r
-  val latinName = "[À-ſ\\w.\\-&, ()'/]+".r
+  val code            = "[a-zA-Z0-9_]+".r
+  val name            = "[\\w.\\- ]+".r
+  val latinName       = "[À-ſ\\w.\\-&, ()'/]+".r
+  val simpleLatinName = "[\\p{Latin}\\p{Common}]+".r
 
   def safeDecode(regex: Regex, maxLength: Int) = {
     JsonDecoder.string.mapOrFail { str =>
@@ -257,9 +261,10 @@ object utils {
     }
   }
 
-  def safeCode      = safeDecode(code     , _)
-  def safeName      = safeDecode(name     , _)
-  def safeLatinName = safeDecode(latinName, _)
+  def safeCode            = safeDecode(code           , _)
+  def safeName            = safeDecode(name           , _)
+  def safeLatinName       = safeDecode(latinName      , _)
+  def safeSimpleLatinName = safeDecode(simpleLatinName, _)
 
   extension (string: String)
     def as[T]: T = string.asInstanceOf[T]
@@ -280,25 +285,35 @@ object utils {
 
   def ensureResponse(task: Task[Response])(using origin: Origin): SafeResponse = {
 
-    def ise(cause: Throwable, trace: Option[StackTrace] = None) = {
+    def traceGiven(cause: Option[Throwable], trace: Option[StackTrace]) = {
+      (cause, trace) match
+        case (_, Some(t)) if !t.isEmpty => Some(t.prettyPrint)
+        case (Some(c), _)               => Some(ExceptionUtils.getStackTrace(c))
+        case _                          => None
+    }
 
-      val stack = trace match
-        case Some(value) if !value.isEmpty => value.prettyPrint
-        case Some(_)                       => ExceptionUtils.getStackTrace(cause)
-        case None                          => ExceptionUtils.getStackTrace(cause)
+    def ise(uef: UnifiedErrorFormat) = {
+      val response = Response.json(uef.toJson)
+      val headers  = Headers(Header.Custom("Error", uef.message), Header.Custom("X-ErrorType", "uef"))
+      response.copy(
+        status  = Status.InternalServerError,
+        headers = response.headers ++ headers
+      )
+    }
 
-      val response = Response.json(UnifiedErrorFormat(origin, cause.getMessage, Some(stack)).toJson)
-      response.copy(status = Status.InternalServerError, headers = response.headers ++ Headers(Header.Custom("Error", cause.getMessage)))
+    def asUEF(cause: Throwable, maybe: Option[StackTrace] = None): UnifiedErrorFormat = {
+      UnifiedErrorFormat(origin, message = cause.getMessage, code = None, trace = traceGiven(Some(cause), maybe))
     }
 
     task
       .sandbox
       .catchAllTrace {
-        case (Cause.Fail(ReturnResponseError(response)                , _), _)     => ZIO.succeed(response)
-        case (Cause.Fail(ReturnResponseWithExceptionError(_, response), _), _)     => ZIO.succeed(response)
-        case (cause                                                       , trace) => ZIO.succeed(ise(cause.squash, Some(trace)))
+        case (Cause.Fail(ReturnResponseError(response)                , _), _    ) => ZIO.succeed(response)
+        case (Cause.Fail(ReturnResponseWithExceptionError(_, response), _), _    ) => ZIO.succeed(response)
+        case (Cause.Fail(ReturnUnifiedError (msg, code, cause)        , _), trace) => ZIO.succeed(ise(UnifiedErrorFormat(origin, msg, code = code, trace = traceGiven(cause, Some(trace)))))
+        case (cause                                                       , trace) => ZIO.succeed(ise(asUEF(cause.squash, Some(trace))))
       }
-      .catchAllDefect { err => ZIO.succeed(ise(err)) }
+      .catchAllDefect { err => ZIO.succeed(ise(asUEF(err))) }
   }
 
   extension (params: QueryParams)
@@ -433,7 +448,7 @@ object kafka {
 
   object KafkaConsumer {
 
-    val layer = ZLayer.fromFunction(SimpleKafkaConsumer.apply _)
+    val layer = ZLayer.fromFunction(SimpleKafkaConsumer.apply)
 
     val consumer = ZLayer.scoped {
 
@@ -540,17 +555,14 @@ object background {
 
 object processor {
 
-  import domain.*
-  import config.*
   import zio.kafka.consumer.CommittableRecord
-  import java.time.{LocalDateTime, ZonedDateTime}
 
   trait Processor {
     def process(record: CommittableRecord[String, String]): UIO[Unit]
   }
 
   object Processor {
-    val drop = ZLayer.fromFunction(DropProcessor.apply _)
+    val drop = ZLayer.fromFunction(() => DropProcessor())
   }
 
   case class DropProcessor() extends Processor {

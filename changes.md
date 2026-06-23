@@ -1,5 +1,9 @@
 # Guara
 
+ - [Leandro] Added `UnifiedErrorFormat.code`
+ - [Leandro] Added `ReturnUnifiedError`
+ - [Leandro] Added `simpleLatinName`
+ - [Leandro] Removing compilation warnings
 
 ## Release v1.3.0
 on: 04/04/2026
