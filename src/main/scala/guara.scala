@@ -1,5 +1,6 @@
 package guara
 
+import guara.errors.ReturnUnifiedError
 import zio.*
 
 object config {
@@ -47,25 +48,33 @@ object errors {
   import zio.http.Response
   import zio.http.Status
 
-  case class ReturnUnifiedError               (message: String, code: Option[Int] = None, cause: Option[Throwable] = None) extends Exception(message, cause.orNull)
+  case class ReturnUnifiedError               (message: String, status: Int = 500, code: Option[Int] = None, cause: Option[Throwable] = None) extends Exception(message, cause.orNull)
   case class ReturnResponseError              (response: Response)                                                         extends Exception
   case class ReturnResponseWithExceptionError (cause: Throwable, response: Response)                                       extends Exception(cause)
 
   object GuaraError {
 
-    def of(response: Response)                           = ReturnResponseError(response)
-    def of(response: Response)(cause: Throwable)         = ReturnResponseWithExceptionError(cause, response)
-    def of(message: String)                              = ReturnUnifiedError(message)
-    def of(message: String)(cause: Throwable)            = ReturnUnifiedError(message, code = None      , cause = Some(cause))
-    def of(message: String, code: Int)                   = ReturnUnifiedError(message, code = Some(code), cause = None)
-    def of(message: String, code: Int)(cause: Throwable) = ReturnUnifiedError(message, code = Some(code), cause = Some(cause))
+    def of(response: Response)                                                   = ReturnResponseError(response)
+    def of(response: Response)(ignored: Option[Nothing])                         = ReturnResponseError(response)
+    def of(response: Response)(cause: Throwable)                                 = ReturnResponseWithExceptionError(cause, response)
+    def of(message: String)                                                      = ReturnUnifiedError(message)
+    def of(message: String)(ignored: Option[Nothing])                            = ReturnUnifiedError(message)
+    def of(message: String)(cause: Throwable)                                    = ReturnUnifiedError(message, status = 500,         code = None      , cause = Some(cause))
+    def of(code: Int, message: String)                                           = ReturnUnifiedError(message, status = 500,         code = Some(code), cause = None)
+    def of(code: Int, message: String)(ignored: Option[Nothing])                 = ReturnUnifiedError(message, status = 500,         code = Some(code), cause = None)
+    def of(code: Int, message: String)(cause: Throwable)                         = ReturnUnifiedError(message, status = 500,         code = Some(code), cause = Some(cause))
+    def of(code: Int, status: Status, message: String)                           = ReturnUnifiedError(message, status = status.code, code = Some(code), cause = None)
+    def of(code: Int, status: Status, message: String)(ignored: Option[Nothing]) = ReturnUnifiedError(message, status = status.code, code = Some(code), cause = None)
+    def of(code: Int, status: Status, message: String)(cause: Throwable)         = ReturnUnifiedError(message, status = status.code, code = Some(code), cause = Some(cause))
 
-    def fail[A](                  response: Response)         : Task[A] = ZIO.fail(of(response))
-    def fail[A](cause: Throwable, response: Response)         : Task[A] = ZIO.fail(of(response)(cause))
-    def fail[A](message: String)                              : Task[A] = ZIO.fail(of(message))
-    def fail[A](message: String, cause: Throwable)            : Task[A] = ZIO.fail(of(message)(cause))
-    def fail[A](message: String, code: Int)                   : Task[A] = ZIO.fail(of(message, code))
-    def fail[A](message: String, code: Int, cause: Throwable) : Task[A] = ZIO.fail(of(message, code)(cause))
+    def fail[A](                  response: Response)                         : Task[A] = ZIO.fail(of(response))
+    def fail[A](cause: Throwable, response: Response)                         : Task[A] = ZIO.fail(of(response)(cause))
+    def fail[A](message: String)                                              : Task[A] = ZIO.fail(of(message))
+    def fail[A](message: String, cause: Throwable)                            : Task[A] = ZIO.fail(of(message)(cause))
+    def fail[A](code: Int, message: String)                                   : Task[A] = ZIO.fail(of(code, message))
+    def fail[A](code: Int, status: Status, message: String)                   : Task[A] = ZIO.fail(of(code, status, message))
+    def fail[A](code: Int, message: String, cause: Throwable)                 : Task[A] = ZIO.fail(of(code, message)(cause))
+    def fail[A](code: Int, status: Status, message: String, cause: Throwable) : Task[A] = ZIO.fail(of(code, status, message)(cause))
   }
 }
 
@@ -213,42 +222,93 @@ object id {
   }
 }
 
-object utils {
+object uef {
 
-  import errors.*
-  import zio.http.*
+  import guara.utils.Origin
+  import zio.http.{Header, Headers, Response, Status}
   import zio.json.*
-  import scala.util.matching.Regex
-  import java.nio.charset.Charset
   import org.apache.commons.lang3.exception.ExceptionUtils
 
-  opaque type Origin = String
-
-  object Origin {
-    def of(origin: String): Origin = origin
-  }
-
-  val utf8 = Charset.forName("utf8")
+  val HeaderName  = "X-ErrorType"
+  val HeaderValue = "UEF"
+  val UEFHeader   = Header.Custom(HeaderName, HeaderValue)
 
   case class UnifiedErrorFormat(
     origin  : Origin,
     message : String,
+    status  : Int            = 500,
     code    : Option[Int]    = None,
     trace   : Option[String] = None
   )
 
   given JsonCodec[UnifiedErrorFormat] = DeriveJsonCodec.gen
 
+  def traceGiven(cause: Option[Throwable], trace: Option[StackTrace]) = {
+    (cause, trace) match
+      case (_, Some(t)) if !t.isEmpty => Some(t.prettyPrint)
+      case (Some(c), _)               => Some(ExceptionUtils.getStackTrace(c))
+      case _                          => None
+  }
+
+  def toResponse(uef: UnifiedErrorFormat) = {
+    val response = Response.json(uef.toJson)
+    val headers  = Headers(Header.Custom("Error", uef.message), UEFHeader)
+    response.copy(
+      status = uef.code.map(Status.fromInt).getOrElse(Status.InternalServerError),
+      headers = response.headers ++ headers
+    )
+  }
+
+  def build(rue: ReturnUnifiedError, trace: StackTrace)(using origin: Origin) = {
+    UnifiedErrorFormat(
+      origin,
+      message = rue.message,
+      status  = rue.status,
+      code    = rue.code,
+      trace   = traceGiven(rue.cause, Some(trace))
+    )
+  }
+
+  def build(cause: Throwable, maybe: Option[StackTrace] = None)(using origin: Origin): UnifiedErrorFormat = {
+    UnifiedErrorFormat(
+      origin,
+      message = cause.getMessage,
+      trace = traceGiven(Some(cause), maybe)
+    )
+  }
+
+  def isUEFHeader(h: Header) = h.headerName == HeaderName && h.renderedValue == HeaderValue
+
+}
+
+object utils {
+
+  import uef.*
+  import errors.*
+  import zio.http.*
+  import zio.json.*
+  import scala.util.matching.Regex
+  import java.nio.charset.Charset
+
+  opaque type Origin = String
+
+  object Origin {
+    def of(origin: String): Origin = origin
+    given JsonCodec[Origin] = JsonCodec.string
+  }
+
+  val utf8 = Charset.forName("utf8")
+
   extension (body: zio.http.Body) {
 
     def parse[T](logBody: Boolean = false)(using jsonDecoder: JsonDecoder[T], charset: Charset = utf8): Task[T] = {
-      for {
+      for
         str   <- body.asString(charset)
         value <- str.fromJson[T] match {
                    case Right(value) => ZIO.succeed(value)
                    case Left(err)    => ZIO.fail(new Exception(s"Failure parsing json body: '$err' ${if(logBody) s" (BODY/$charset: $str)" else "" }"))
                  }
-      } yield value
+      yield value
     }
   }
 
@@ -290,37 +350,16 @@ object utils {
       def toTask: Task[Response] = sr
   }
 
-  def ensureResponse(task: Task[Response])(using origin: Origin): SafeResponse = {
-
-    def traceGiven(cause: Option[Throwable], trace: Option[StackTrace]) = {
-      (cause, trace) match
-        case (_, Some(t)) if !t.isEmpty => Some(t.prettyPrint)
-        case (Some(c), _)               => Some(ExceptionUtils.getStackTrace(c))
-        case _                          => None
-    }
-
-    def ise(uef: UnifiedErrorFormat) = {
-      val response = Response.json(uef.toJson)
-      val headers  = Headers(Header.Custom("Error", uef.message), Header.Custom("X-ErrorType", "uef"))
-      response.copy(
-        status  = Status.InternalServerError,
-        headers = response.headers ++ headers
-      )
-    }
-
-    def asUEF(cause: Throwable, maybe: Option[StackTrace] = None): UnifiedErrorFormat = {
-      UnifiedErrorFormat(origin, message = cause.getMessage, code = None, trace = traceGiven(Some(cause), maybe))
-    }
-
+  def ensureResponse(task: Task[Response])(using Origin): SafeResponse = {
     task
       .sandbox
       .catchAllTrace {
         case (Cause.Fail(ReturnResponseError(response)                , _), _    ) => ZIO.succeed(response)
         case (Cause.Fail(ReturnResponseWithExceptionError(_, response), _), _    ) => ZIO.succeed(response)
-        case (Cause.Fail(ReturnUnifiedError (msg, code, cause)        , _), trace) => ZIO.succeed(ise(UnifiedErrorFormat(origin, msg, code = code, trace = traceGiven(cause, Some(trace)))))
-        case (cause                                                       , trace) => ZIO.succeed(ise(asUEF(cause.squash, Some(trace))))
+        case (Cause.Fail(rue : ReturnUnifiedError                     , _), trace) => ZIO.succeed(toResponse(build(rue, trace)))
+        case (cause                                                       , trace) => ZIO.succeed(toResponse(build(cause.squash, Some(trace))))
       }
-      .catchAllDefect { err => ZIO.succeed(ise(asUEF(err))) }
+      .catchAllDefect { err => ZIO.succeed(toResponse(build(err))) }
   }
 
   extension (params: QueryParams)
