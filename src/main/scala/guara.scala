@@ -277,7 +277,7 @@ object uef {
     )
   }
 
-  def isUEFHeader(h: Header) = h.headerName == HeaderName && h.renderedValue == HeaderValue
+  def isUEFHeader(h: Header) = h.headerName.equalsIgnoreCase(HeaderName) && h.renderedValue.equalsIgnoreCase(HeaderValue)
 
 }
 
