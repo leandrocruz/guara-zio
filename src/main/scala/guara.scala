@@ -254,7 +254,7 @@ object uef {
     val response = Response.json(uef.toJson)
     val headers  = Headers(Header.Custom("Error", uef.message), UEFHeader)
     response.copy(
-      status = uef.code.map(Status.fromInt).getOrElse(Status.InternalServerError),
+      status  = Status.fromInt(uef.status),
       headers = response.headers ++ headers
     )
   }
