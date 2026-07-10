@@ -1,6 +1,5 @@
 package guara
 
-import guara.errors.ReturnUnifiedError
 import zio.*
 
 object config {
@@ -224,6 +223,7 @@ object id {
 
 object uef {
 
+  import guara.errors.ReturnUnifiedError
   import guara.utils.Origin
   import zio.http.{Header, Headers, Response, Status}
   import zio.json.*
